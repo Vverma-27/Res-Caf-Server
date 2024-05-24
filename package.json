@@ -1,0 +1,41 @@
+{
+  "name": "kalyan",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "ts-node index.ts",
+    "dev": "nodemon --legacy-watch --exec tsx index.ts",
+    "build": "tsc -b"
+  },
+  "author": "Vihaan Verma <vverma270705@gmail.com>",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "axios": "^1.7.2",
+    "canvas": "^2.11.2",
+    "cloudinary": "^2.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "firebase-admin": "^12.1.0",
+    "jssha": "^3.3.1",
+    "mongodb": "^6.6.2",
+    "mongoose": "^8.3.3",
+    "multer": "^1.4.5-lts.1",
+    "pdfjs-dist": "^4.2.67",
+    "razorpay": "^2.9.3",
+    "sharp": "^0.33.3",
+    "tesseract.js": "^5.0.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/express": "4.16.1",
+    "@types/express-serve-static-core": "4.16.4",
+    "@typescript-eslint/eslint-plugin": "^7.8.0",
+    "@typescript-eslint/parser": "^7.8.0",
+    "nodemon": "^3.1.0",
+    "tsx": "^4.9.0"
+  }
+}

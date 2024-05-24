@@ -1,0 +1,185 @@
+
+  private saveImages = async (images) => {
+    images.forEach((image, index) => {
+      const filename = `image${index + 1}.png`;
+      let buff = Buffer.from(image.split("base64,").pop(), "base64");
+      fs.writeFileSync(filename, buff);
+      console.log(`Image saved as ${filename}`);
+    });
+  };
+  private preprocessImage = async (imageData) => {
+    try {
+      // Decode the base64-encoded image data
+      const buffer = Buffer.from(imageData.split("base64,")[1], "base64");
+
+      // Apply preprocessing techniques using sharp
+      const preprocessedImageBuffer = await sharp(buffer)
+        .grayscale() // Convert the image to grayscale
+        .normalize() // Normalize the image
+        .sharpen() // Sharpen the image
+        .toBuffer(); // Convert the image to buffer format
+
+      // Convert the preprocessed image buffer back to base64-encoded string
+      const preprocessedImageData = `data:image/png;base64,${preprocessedImageBuffer.toString(
+        "base64"
+      )}`;
+
+      return preprocessedImageData;
+    } catch (error) {
+      console.error("Error preprocessing image:", error);
+      throw error;
+    }
+  };
+  private performOCR = async (imageData, i) => {
+    // console.log("🚀 ~ RestaurantController ~ performOCR= ~ imageData:", imageData)
+    try {
+      // const img = await loadImage(imageData);
+      const preprocessedImage = await this.preprocessImage(imageData);
+      const buff = Buffer.from(
+        preprocessedImage.split("base64,").pop(),
+        "base64"
+      );
+      // console.log("🚀 ~ RestaurantController ~ performOCR= ~ img:", img)
+      // const canvas = createCanvas(img.width, img.height);
+      // const ctx = canvas.getContext('2d');
+      // canvas.width = img.width;
+      // canvas.height = img.height;
+      // ctx.drawImage(img, 0, 0);
+      // const htmlCanvas: HTMLCanvasElement = canvas as any;
+      // Perform OCR on the canvas
+      const worker = await createWorker("eng");
+      // (async () => {
+      const {
+        data: { text },
+      } = await worker.recognize(buff);
+      console.log(text);
+      const extractedInformation = this.extractInformation(text);
+
+      // Save the extracted information to a file
+      await fs.promises.writeFile(
+        `menu_info_page${i}.json`,
+        JSON.stringify(extractedInformation)
+      );
+
+      // Terminate the Tesseract worker
+      await worker.terminate();
+      // })();
+      // const { data: { text } } = await Tesseract.recognize(htmlCanvas, 'eng');
+      // console.log('Extracted text:', text);
+      // return text;
+    } catch (error) {
+      console.error("Error performing OCR:", error);
+      throw error;
+    }
+  };
+  private extractInformation = (text: string) => {
+    // Initialize variables to store extracted information
+    const extractedInformation: any[] = [];
+    let currentCategory = "";
+    let currentItem: any = {};
+
+    // Split the OCR text by lines
+    const lines = text.split(/\r?\n/);
+
+    // Iterate over each line of text
+    lines.forEach((line) => {
+      // Example regex patterns for matching category names and prices
+      const categoryPattern = /^(?<category>.+?):$/;
+      const pricePattern = /(\$[\d.]+)/;
+
+      // Match category name
+      const categoryMatch = line.match(categoryPattern);
+      if (categoryMatch) {
+        currentCategory = categoryMatch.groups.category;
+      }
+
+      // Match dish name and price
+      const priceMatch = line.match(pricePattern);
+      if (priceMatch) {
+        // If the line contains a price, assume it's a dish line
+        if (currentItem.name && currentItem.price) {
+          // Push the previous item to the extracted information array
+          extractedInformation.push({
+            ...currentItem,
+            category: currentCategory,
+          });
+          currentItem = {}; // Reset currentItem
+        }
+        // Extract dish name and price
+        const dishName = line.replace(priceMatch[0], "").trim();
+        const price = priceMatch[0];
+        currentItem = { name: dishName, price: price };
+      } else {
+        // If the line does not contain a price, assume it's a description line
+        if (currentItem.description) {
+          // If the currentItem already has a description, append to it
+          currentItem.description += " " + line.trim();
+        } else {
+          // Otherwise, initialize the description
+          currentItem.description = line.trim();
+        }
+      }
+    });
+
+    // Push the last item to the extracted information array
+    if (currentItem.name && currentItem.price) {
+      extractedInformation.push({ ...currentItem, category: currentCategory });
+    }
+
+    return extractedInformation;
+  };
+
+  private convertPDFToImages = async (pdfBuffer: ArrayBuffer) => {
+    const pdfjsWorkerSrc = "pdfjs-dist/legacy/build/pdf.worker.mjs";
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerSrc;
+    try {
+      // Initialize PDF.js with the BinaryData
+      const pdfDoc = await pdfjsLib.getDocument({
+        data: new Uint8Array(pdfBuffer),
+      }).promise;
+      // console.log("🚀 ~ RestaurantController ~ convertPDFToImages= ~ pdfDoc:", pdfDoc.page)
+      const images: string[] = [];
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        // Get the first page of the PDF
+        const page = await pdfDoc.getPage(i);
+        // Get the dimensions and scale of the PDF page
+        const viewport = page.getViewport({ scale: 1 });
+        // Create a canvas and rendering context
+        const canvas = createCanvas(viewport.width, viewport.height);
+        const context = canvas.getContext("2d");
+        // Render the PDF page as an image on the canvas
+        await page.render({ canvasContext: context, viewport }).promise;
+        // Convert the canvas content to a data URL (base64)
+        const imageDataURL = canvas.toDataURL("image/png"); // Change 'image/png' to the desired format if needed
+        images.push(imageDataURL);
+      }
+      return images;
+    } catch (error) {
+      // Handle any errors that occur during the conversion
+      throw new Error(`Error converting PDF to image: ${error}`);
+    }
+  };
+  
+  private handleMenuUpload = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      // console.log(req.file)
+      const pdfBuffer = req.file.buffer;
+      // Convert PDF to images
+      const images = await this.convertPDFToImages(pdfBuffer);
+      // await this.saveImages(images)
+      // console.log("🚀 ~ RestaurantController ~ images:", images
+
+      for (let i = 0; i < images.length; i++) {
+        // Perform OCR on each image and log the text
+        await this.performOCR(images[i], i);
+      }
+      res.json({ ok: "yes" });
+    } catch (err) {
+      console.log(err);
+      res.status(500).send(err);
+    }
+  };
