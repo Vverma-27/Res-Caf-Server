@@ -7,9 +7,6 @@ import restaurantMiddleware from "../middleware/restaurant/client";
 import axios from "axios";
 import jsSHA from "jssha";
 
-const PAYU_KEY = "SlETOD";
-const PAYU_SALT = "CKKMq7FwcVcnbZ2sC7BSVTpwkpeFoUB2";
-const PAYU_URL = "https://test.payu.in/_payment";
 class RestaurantController {
   private router: express.Router;
   private route = "/restaurant/client";
@@ -25,7 +22,7 @@ class RestaurantController {
       this.makePayment
     );
     this.router.post(`${this.route}/payment/success`, this.paymentSuccess);
-    this.router.post(`${this.route}/payment/response`, this.paymentResponse);
+    this.router.post(`${this.route}/payment/failure`, this.paymentFail);
   }
   private getRestaurant = async (
     req: express.Request,
@@ -75,7 +72,7 @@ class RestaurantController {
       } else {
         const pd = req.body;
         const hashString =
-          PAYU_KEY + // live or test key
+          process.env.PAYU_KEY + // live or test key
           "|" +
           pd.txnid +
           "|" +
@@ -88,7 +85,7 @@ class RestaurantController {
           pd.email +
           "|" +
           "||||||||||" +
-          PAYU_SALT; // live or test salt
+          process.env.PAYU_SALT; // live or test salt
 
         // Create a SHA-512 hash using the crypto library
         var sha = new jsSHA("SHA-512", "TEXT"); //encryption taking place
@@ -105,7 +102,7 @@ class RestaurantController {
     const { status, txnid, amount, hash } = req.body;
 
     // Verify hash
-    const hashString = `${PAYU_SALT}|${status}|||||||||||${req.body.email}|${req.body.firstname}|${req.body.productinfo}|${amount}|${txnid}|${PAYU_KEY}`;
+    const hashString = `${process.env.PAYU_SALT}|${status}|||||||||||${req.body.email}|${req.body.firstname}|${req.body.productinfo}|${amount}|${txnid}|${process.env.PAYU_KEY}`;
     const expectedHash = crypto
       .createHash("sha512")
       .update(hashString)
@@ -120,39 +117,11 @@ class RestaurantController {
       res.json({ success: false, message: "Invalid hash" });
     }
   };
-  private paymentResponse = async (req, res) => {
-    var pd = req.body;
-    // console.log("🚀 ~ RestaurantController ~ paymentResponse= ~ pd:", pd);
-    const formData = new URLSearchParams();
-    formData.append("key", pd.key);
-    formData.append("txnid", pd.txnid);
-    formData.append("amount", pd.amount);
-    formData.append("productinfo", pd.productinfo);
-    formData.append("firstname", pd.firstname);
-    formData.append("email", pd.email);
-    formData.append("phone", pd.phone);
-    formData.append("surl", pd.surl);
-    formData.append("furl", pd.furl);
-    formData.append("hash", pd.hash);
-    formData.append("service_provider", pd.service_provider);
-
-    console.log(
-      "🚀 ~ RestaurantController ~ paymentResponse= ~ formData:",
-      formData
-    );
-    //url for test environment is : , change it below
+  private paymentFail = async (req, res) => {
     try {
-      const result = await axios.post(PAYU_URL, formData, {
-        headers: {
-          accept: "text/plain",
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      });
-
-      res.send({ url: result.request.res.responseUrl });
-    } catch (err) {
-      console.log("error", err);
-    }
+      console.log(req.body);
+      res.json({ status: "failed" });
+    } catch (error) {}
   };
 }
 export default RestaurantController;
