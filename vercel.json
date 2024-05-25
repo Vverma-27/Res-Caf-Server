@@ -1,3 +1,5 @@
 {
-    "functions": "dist/**/*.js"
+    "functions": {
+        "source": "dist"
+    }
 }
