@@ -2,9 +2,11 @@ import { ObjectId } from "mongodb";
 import mongoose, { Schema } from "mongoose";
 export interface ICategory {
   name: string;
+  _id?: ObjectId;
   dishes: ObjectId[];
 }
 export interface IDish {
+  _id?: ObjectId;
   name: String;
   price: Number;
   description?: String;

@@ -214,7 +214,11 @@ class RestaurantController {
       res.status(500).send(err);
     }
   };
-
+  // private objectIdFromString = (inputId: number | string): ObjectId => {
+  //   return typeof inputId === "number"
+  //     ? ObjectId.createFromHexString(inputId.toString())
+  //     : new ObjectId(inputId);
+  // };
   private addMenu = async (req: express.Request, res: express.Response) => {
     try {
       const { name } = req.headers;
@@ -234,7 +238,6 @@ class RestaurantController {
       console.log("🚀 ~ RestaurantController ~ addMenu= ~ menu:", menu);
 
       if (!menu) return res.status(400);
-
       //@ts-ignore
       const db = client.db(name);
       const dishesCollection = db.collection("dishes");
@@ -242,32 +245,76 @@ class RestaurantController {
 
       const categoryPromises = Object.keys(menu).map(async (categoryName) => {
         const categoryDishes = menu[categoryName].dishes;
-        const dishInsertPromises: Promise<ObjectId>[] = categoryDishes.map(
-          async (dish: IDish, index) => {
-            if (imagesUploaded.includes(dish.name)) {
-              //@ts-ignore
-              const imageBuffer = req.files[index].buffer;
-              dish.image = await this.uploadImageToCloudinary(
-                imageBuffer,
-                `${name}_dishes`,
-                `${categoryName}_dish_${dish.name}`
-              );
-            }
+        let index = 0;
+
+        const dishInsertPromises = categoryDishes.map(async (dish: IDish) => {
+          // Check if dish already exists
+          const existingDish = await dishesCollection.findOne({
+            _id: dish._id,
+          });
+
+          if (imagesUploaded.includes(dish.name)) {
+            const imageBuffer = req.files[index].buffer;
+            dish.image = await this.uploadImageToCloudinary(
+              imageBuffer,
+              `${name}_dishes`,
+              `${categoryName}_dish_${dish.name}`
+            );
+            index += 1;
+          }
+
+          // Check if dish exists and has changed
+          if (
+            existingDish &&
+            JSON.stringify(existingDish) !== JSON.stringify(dish)
+          ) {
+            // Update existing dish
+            await dishesCollection.updateOne(
+              { _id: existingDish._id },
+              { $set: dish }
+            );
+            return existingDish._id;
+          } else if (!existingDish) {
+            // Insert new dish
             const { insertedId } = await dishesCollection.insertOne(dish);
             return insertedId;
+          } else {
+            // Skip update if dish exists and hasn't changed
+            return existingDish._id;
           }
-        );
+        });
 
         const dishInsertResults = await Promise.all(dishInsertPromises);
-        // Convert dish IDs from strings to MongoDB ObjectIDs
-        const dishIds = dishInsertResults.map((result) => new ObjectId(result));
+        console.log(
+          "🚀 ~ RestaurantController ~ categoryPromises ~ dishInsertResults:",
+          dishInsertResults
+        );
+        const dishIds = dishInsertResults.map((result) => result);
 
-        const category: ICategory = {
+        // Check if category already exists
+        const existingCategory = await categoriesCollection.findOne({
           name: categoryName,
-          dishes: dishIds,
-        };
+        });
 
-        return categoriesCollection.insertOne(category);
+        if (existingCategory) {
+          // Check if category has changed
+          const categoryDishesChanged =
+            JSON.stringify(existingCategory.dishes) !== JSON.stringify(dishIds);
+          if (categoryDishesChanged) {
+            // Update existing category
+            await categoriesCollection.updateOne(
+              { _id: existingCategory._id },
+              { $set: { dishes: dishIds } }
+            );
+          }
+        } else {
+          // Insert new category
+          const category: ICategory = {
+            name: categoryName,
+            dishes: dishIds,
+          };
+          await categoriesCollection.insertOne(category);
+        }
       });
 
       await Promise.all(categoryPromises);
@@ -280,5 +327,72 @@ class RestaurantController {
       res.status(500).send(err);
     }
   };
+
+  // private addMenu = async (req: express.Request, res: express.Response) => {
+  //   try {
+  //     const { name } = req.headers;
+  //     const {
+  //       menu: rawMenu,
+  //       draft,
+  //       imagesUploaded: rawImagesUploaded,
+  //     } = req.body;
+  //     const menu = JSON.parse(rawMenu);
+  //     const imagesUploaded = JSON.parse(rawImagesUploaded);
+
+  //     console.log("🚀 ~ RestaurantController ~ addMenu= ~ draft:", draft);
+  //     console.log(
+  //       "🚀 ~ RestaurantController ~ addMenu= ~ imagesUploaded:",
+  //       imagesUploaded
+  //     );
+  //     console.log("🚀 ~ RestaurantController ~ addMenu= ~ menu:", menu);
+
+  //     if (!menu) return res.status(400);
+
+  //     //@ts-ignore
+  //     const db = client.db(name);
+  //     const dishesCollection = db.collection("dishes");
+  //     const categoriesCollection = db.collection("categories");
+
+  //     const categoryPromises = Object.keys(menu).map(async (categoryName) => {
+  //       const categoryDishes = menu[categoryName].dishes;
+  //       let index = 0;
+  //       const dishInsertPromises: Promise<ObjectId>[] = categoryDishes.map(
+  //         async (dish: IDish) => {
+  //           if (imagesUploaded.includes(dish.name)) {
+  //             const imageBuffer = req.files[index].buffer;
+  //             dish.image = await this.uploadImageToCloudinary(
+  //               imageBuffer,
+  //               `${name}_dishes`,
+  //               `${categoryName}_dish_${dish.name}`
+  //             );
+  //             index += 1;
+  //           }
+  //           const { insertedId } = await dishesCollection.insertOne(dish);
+  //           return insertedId;
+  //         }
+  //       );
+
+  //       const dishInsertResults = await Promise.all(dishInsertPromises);
+  //       // Convert dish IDs from strings to MongoDB ObjectIDs
+  //       const dishIds = dishInsertResults.map((result) => new ObjectId(result));
+
+  //       const category: ICategory = {
+  //         name: categoryName,
+  //         dishes: dishIds,
+  //       };
+
+  //       return categoriesCollection.insertOne(category);
+  //     });
+
+  //     await Promise.all(categoryPromises);
+
+  //     if (!draft) await db.createCollection("clients");
+
+  //     res.json({ status: 3 });
+  //   } catch (err) {
+  //     console.log(err);
+  //     res.status(500).send(err);
+  //   }
+  // };
 }
 export default RestaurantController;
