@@ -5,7 +5,6 @@ import mongoose from "mongoose";
 import initializeCloudinary from "./services/cloudinary";
 import initialiseFirebaseAdmin from "./services/firebase";
 import initializeClient from "./services/mongo";
-import subdomainMiddleware from "./middleware/subdomain";
 class App {
   private app: express.Application;
   private port: number;
@@ -19,7 +18,6 @@ class App {
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
     this.app.use(cors());
-    this.app.use(subdomainMiddleware);
     initializeClient();
     initializeCloudinary();
     initialiseFirebaseAdmin();
@@ -30,13 +28,12 @@ class App {
         // this.app.use("/api/", controller.router);
         this.app.use((req, res, next) => {
           if (
-            subdomain === req.mySubdomains[0] ||
+            subdomain === req.subdomains.slice(-1)[0] ||
             (subdomain === "client" &&
               req.subdomains.length > 0 &&
-              req.subdomains[0] !== "admin" &&
-              req.subdomains[0] !== "example")
+              req.subdomains.slice(-1)[0] !== "admin" &&
+              req.subdomains.slice(-1)[0] !== "example")
           ) {
-            // console.log(req.headers.authtoken);
             controller.router(req, res, next);
           } else {
             next();

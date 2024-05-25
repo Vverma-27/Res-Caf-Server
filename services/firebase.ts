@@ -1,6 +1,8 @@
-import fbAdmin from "firebase-admin"
-import serviceAccount from '../serviceAccountKey.json';
+import fbAdmin from "firebase-admin";
+import serviceAccount from "../serviceAccountKey.json";
 
-export default () => fbAdmin.initializeApp({
-    credential: fbAdmin.credential.cert(serviceAccount)
-});
+export default () =>
+  fbAdmin.initializeApp({
+    //@ts-ignore
+    credential: fbAdmin.credential.cert(serviceAccount),
+  });

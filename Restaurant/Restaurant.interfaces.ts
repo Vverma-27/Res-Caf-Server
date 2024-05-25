@@ -1,7 +1,8 @@
+import { ObjectId } from "mongodb";
 import mongoose, { Schema } from "mongoose";
 export interface ICategory {
   name: string;
-  dishes: mongoose.ObjectId[];
+  dishes: ObjectId[];
 }
 export interface IDish {
   name: String;
