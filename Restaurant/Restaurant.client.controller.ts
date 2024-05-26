@@ -30,8 +30,12 @@ class RestaurantController {
   ) => {
     try {
       const { name } = req.headers;
+      console.log("🚀 ~ RestaurantController ~ name:", name);
       //@ts-ignore
       const db = client.db(name);
+      const collections = await db.collections();
+      if (collections.length <= 3)
+        return res.status(404).json({ msg: "no restaurant found" });
       let menuRes;
       menuRes = await db
         .collection("categories")

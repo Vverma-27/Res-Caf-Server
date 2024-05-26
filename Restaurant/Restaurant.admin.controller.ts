@@ -49,6 +49,18 @@ class RestaurantController {
       restaurantMiddleware,
       this.addDetails
     );
+    this.router.delete(
+      `${this.route}/category/:id`,
+      authMiddleware,
+      restaurantMiddleware,
+      this.deleteCategory
+    );
+    this.router.delete(
+      `${this.route}/dish/:catId/:dishId`,
+      authMiddleware,
+      restaurantMiddleware,
+      this.deleteDish
+    );
     this.router.get(
       `${this.route}/status`,
       authMiddleware,
@@ -219,6 +231,95 @@ class RestaurantController {
   //     ? ObjectId.createFromHexString(inputId.toString())
   //     : new ObjectId(inputId);
   // };
+  isEqualExceptImage = (dish1: IDish, dish2: IDish): boolean => {
+    const { image: image1, ...rest1 } = dish1;
+    const { image: image2, ...rest2 } = dish2;
+    return JSON.stringify(rest1) === JSON.stringify(rest2);
+  };
+  private extractCloudinaryPublicId = (url: string): string | null => {
+    // Use a regex pattern to match the folder name and public ID
+    const regex = /\/(?:[^\/]+\/)*([^\/]+\/[^\/]+?)\.[^\/]+$/;
+    const match = url.match(regex);
+    return match ? decodeURIComponent(match[1]) : null;
+  };
+  private handleDeleteDish = async (id: string, name: string) => {
+    //@ts-ignore
+    const db = client.db(name);
+    const dish = await db.collection("dishes").findOneAndDelete({ _id: id });
+    // console.log(
+    //   "🚀 ~ RestaurantController ~ privatehandleDeleteDish ~ dish:",
+    //   dish
+    // );
+    const imageUrl = dish.image;
+    if (imageUrl) {
+      const publicId = this.extractCloudinaryPublicId(imageUrl);
+      console.log(
+        "🚀 ~ RestaurantController ~ privatehandleDeleteDish ~ publicId:",
+        publicId
+      );
+
+      // Delete the image from Cloudinary
+      if (publicId) {
+        const res = await cloudinary.v2.uploader.destroy(publicId);
+        console.log(
+          "🚀 ~ RestaurantController ~ privatehandleDeleteDish ~ res:",
+          res
+        );
+      }
+    }
+  };
+  private deleteDish = async (req: express.Request, res: express.Response) => {
+    try {
+      const { catId, dishId } = req.params;
+      const { name } = req.headers;
+
+      if (!catId || !dishId)
+        return res.status(400).json({ msg: "catId or dishId is missing" });
+
+      await this.handleDeleteDish(dishId, name as string);
+
+      //@ts-ignore
+      const db = client.db(name);
+      await db.collection("categories").updateOne(
+        { _id: new ObjectId(catId) },
+        //@ts-ignore
+        { $pull: { dishes: dishId } }
+      );
+
+      res.json({ msg: "deleted" });
+    } catch (err) {
+      console.log(err);
+      res.status(500).send(err);
+    }
+  };
+
+  private deleteCategory = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      const { id } = req.params;
+      // console.log("🚀 ~ RestaurantController ~ id:", req.body);
+      const { name } = req.headers;
+      if (!id) return res.status(400).json({ msg: "no id sent" });
+      //@ts-ignore
+      const db = client.db(name);
+      const category = await db
+        .collection("categories")
+        .findOneAndDelete({ _id: new ObjectId(id) });
+      console.log("🚀 ~ RestaurantController ~ category:", category);
+      // await category.dishes.forEach(async (id) => {
+      //   this.handleDeleteDish(id, name as string);
+      // });
+      await Promise.all(
+        category.dishes.map((id) => this.handleDeleteDish(id, name as string))
+      );
+      res.json({ msg: "deleted" });
+    } catch (err) {
+      console.log(err);
+      res.status(500).send(err);
+    }
+  };
   private addMenu = async (req: express.Request, res: express.Response) => {
     try {
       const { name } = req.headers;
@@ -229,23 +330,19 @@ class RestaurantController {
       } = req.body;
       const menu = JSON.parse(rawMenu);
       const imagesUploaded = JSON.parse(rawImagesUploaded);
-
       console.log("🚀 ~ RestaurantController ~ addMenu= ~ draft:", draft);
       console.log(
         "🚀 ~ RestaurantController ~ addMenu= ~ imagesUploaded:",
         imagesUploaded
       );
       console.log("🚀 ~ RestaurantController ~ addMenu= ~ menu:", menu);
-
       if (!menu) return res.status(400);
       //@ts-ignore
       const db = client.db(name);
       const dishesCollection = db.collection("dishes");
       const categoriesCollection = db.collection("categories");
-
       const categoryPromises = Object.keys(menu).map(async (categoryName) => {
         const categoryDishes = menu[categoryName].dishes;
-        let index = 0;
 
         const dishInsertPromises = categoryDishes.map(async (dish: IDish) => {
           // Check if dish already exists
@@ -254,21 +351,26 @@ class RestaurantController {
           });
 
           if (imagesUploaded.includes(dish.name)) {
-            const imageBuffer = req.files[index].buffer;
+            const imageIndex = imagesUploaded.indexOf(dish.name);
+            const imageBuffer = req.files[imageIndex].buffer;
             dish.image = await this.uploadImageToCloudinary(
               imageBuffer,
               `${name}_dishes`,
               `${categoryName}_dish_${dish.name}`
             );
-            index += 1;
           }
 
           // Check if dish exists and has changed
           if (
             existingDish &&
-            JSON.stringify(existingDish) !== JSON.stringify(dish)
+            //@ts-ignore
+            !this.isEqualExceptImage(existingDish, dish)
           ) {
             // Update existing dish
+            console.log(
+              "🚀 ~ RestaurantController ~ dishInsertPromises ~ existingDish:",
+              existingDish
+            );
             await dishesCollection.updateOne(
               { _id: existingDish._id },
               { $set: dish }
@@ -285,10 +387,6 @@ class RestaurantController {
         });
 
         const dishInsertResults = await Promise.all(dishInsertPromises);
-        console.log(
-          "🚀 ~ RestaurantController ~ categoryPromises ~ dishInsertResults:",
-          dishInsertResults
-        );
         const dishIds = dishInsertResults.map((result) => result);
 
         // Check if category already exists
@@ -301,6 +399,12 @@ class RestaurantController {
           const categoryDishesChanged =
             JSON.stringify(existingCategory.dishes) !== JSON.stringify(dishIds);
           if (categoryDishesChanged) {
+            console.log(
+              "🚀 ~ RestaurantController ~ categoryPromises ~ existingCategory:",
+              existingCategory,
+              JSON.stringify(existingCategory.dishes),
+              JSON.stringify(dishIds)
+            );
             // Update existing category
             await categoriesCollection.updateOne(
               { _id: existingCategory._id },
@@ -319,9 +423,9 @@ class RestaurantController {
 
       await Promise.all(categoryPromises);
 
-      if (!draft) await db.createCollection("clients");
+      if (draft == "false") await db.createCollection("clients");
 
-      res.json({ status: 3 });
+      res.json({ status: draft === "false" ? 4 : 3 });
     } catch (err) {
       console.log(err);
       res.status(500).send(err);
