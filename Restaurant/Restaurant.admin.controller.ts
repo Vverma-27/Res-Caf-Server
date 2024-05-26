@@ -245,6 +245,7 @@ class RestaurantController {
   private handleDeleteDish = async (id: string, name: string) => {
     //@ts-ignore
     const db = client.db(name);
+    //@ts-ignore
     const dish = await db.collection("dishes").findOneAndDelete({ _id: id });
     // console.log(
     //   "🚀 ~ RestaurantController ~ privatehandleDeleteDish ~ dish:",
