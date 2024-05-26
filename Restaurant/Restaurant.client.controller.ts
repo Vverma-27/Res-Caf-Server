@@ -35,7 +35,7 @@ class RestaurantController {
       const db = client.db(name);
       const collections = await db.collections();
       if (collections.length <= 3)
-        return res.status(404).json({ msg: "no restaurant found" });
+        return res.status(404).send({ msg: "no restaurant found" });
       let menuRes;
       menuRes = await db
         .collection("categories")
