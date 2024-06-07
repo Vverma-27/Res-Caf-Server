@@ -67,6 +67,12 @@ class RestaurantController {
       restaurantMiddleware,
       this.getStatus
     );
+    this.router.get(
+      `${this.route}/clients`,
+      authMiddleware,
+      restaurantMiddleware,
+      this.getClients
+    );
     // this.router.put(
     //   `${this.route}/menu`,
     //   upload.array("images", 20),
@@ -188,6 +194,37 @@ class RestaurantController {
         status: collections.length === 1 ? 1 : collections.length === 3 ? 2 : 3,
         menu,
         details,
+      });
+    } catch (err) {
+      console.log(err);
+      res.status(500).send(err);
+    }
+  };
+
+  private getClients = async (req: express.Request, res: express.Response) => {
+    try {
+      const { name } = req.headers;
+      //@ts-ignore
+      const db = client.db(name);
+      const collections = await db.collections();
+      let clientsRes;
+      if (collections.length >= 3) {
+        clientsRes = await db
+          .collection("clients")
+          .aggregate([
+            {
+              $lookup: {
+                from: "orders",
+                localField: "orders",
+                foreignField: "_id",
+                as: "orders",
+              },
+            },
+          ])
+          .toArray();
+      }
+      res.json({
+        clients: clientsRes,
       });
     } catch (err) {
       console.log(err);
@@ -424,7 +461,12 @@ class RestaurantController {
 
       await Promise.all(categoryPromises);
 
-      if (draft == "false") await db.createCollection("clients");
+      if (draft == "false") {
+        await Promise.all([
+          db.createCollection("clients"),
+          db.createCollection("order"),
+        ]);
+      }
 
       res.json({ status: draft === "false" ? 4 : 3 });
     } catch (err) {

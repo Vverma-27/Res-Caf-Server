@@ -8,6 +8,8 @@
 # testing
 /coverage
 
+/client
+
 docker-compose.dev.yml
 docker-compose.prod.yml
 docker-compose.yml

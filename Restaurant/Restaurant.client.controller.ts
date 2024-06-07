@@ -6,6 +6,7 @@ import fetch from "node-fetch";
 import restaurantMiddleware from "../middleware/restaurant/client";
 import axios from "axios";
 import jsSHA from "jssha";
+import { ObjectId } from "mongodb";
 
 class RestaurantController {
   private router: express.Router;
@@ -16,6 +17,12 @@ class RestaurantController {
   }
   private initializeRoutes() {
     this.router.get(`${this.route}/`, restaurantMiddleware, this.getRestaurant);
+    this.router.post(`${this.route}/`, restaurantMiddleware, this.createClient);
+    this.router.get(
+      `${this.route}/orders`,
+      restaurantMiddleware,
+      this.getPastOrders
+    );
     this.router.post(
       `${this.route}/payment`,
       restaurantMiddleware,
@@ -24,12 +31,38 @@ class RestaurantController {
     this.router.post(`${this.route}/payment/success`, this.paymentSuccess);
     this.router.post(`${this.route}/payment/failure`, this.paymentFail);
   }
+  private getPastOrders = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      const { name } = req.headers;
+      console.log("🚀 ~ RestaurantController ~ name:", name);
+      const { uid } = req.cookies;
+      //@ts-ignore
+      const db = client.db(name);
+      const collections = await db.collections();
+      if (collections.length <= 3)
+        return res.status(404).send({ msg: "no restaurant found" });
+      const orders = await db
+        .collection("orders")
+        .find({ client: uid })
+        .project({ list: 1 })
+        .toArray();
+
+      res.json({ orders });
+    } catch (err) {
+      console.log(err);
+      res.status(500).send(err);
+    }
+  };
   private getRestaurant = async (
     req: express.Request,
     res: express.Response
   ) => {
     try {
       const { name } = req.headers;
+      console.log(req.cookies);
       console.log("🚀 ~ RestaurantController ~ name:", name);
       //@ts-ignore
       const db = client.db(name);
@@ -57,6 +90,14 @@ class RestaurantController {
         };
         return acc;
       }, {});
+      // console.log("cpplies, ", req.cookies);
+      // if (!req.cookies.uid)
+      //   res.cookie("uid", "abdvsbshwhjw", {
+      //     maxAge: 31536000000,
+      //     httpOnly: true,
+      //     secure: process.env.NODE_ENV === "production",
+      //     sameSite: "strict",
+      //   });
       res.json({ menu, name });
     } catch (err) {
       console.log(err);
@@ -70,7 +111,9 @@ class RestaurantController {
         !req.body.amount ||
         !req.body.productinfo ||
         !req.body.firstname ||
-        !req.body.email
+        !req.body.email ||
+        !req.body.udf1 ||
+        !req.body.udf2
       ) {
         res.send("Mandatory fields missing");
       } else {
@@ -88,34 +131,159 @@ class RestaurantController {
           "|" +
           pd.email +
           "|" +
-          "||||||||||" +
+          pd.udf1 +
+          "|" +
+          pd.udf2 +
+          "|" +
+          "||||||||" +
           process.env.PAYU_SALT; // live or test salt
 
         // Create a SHA-512 hash using the crypto library
         var sha = new jsSHA("SHA-512", "TEXT"); //encryption taking place
         sha.update(hashString);
         var hash = sha.getHash("HEX"); //hashvalue converted to hexvalue
-        res.send({ hash: hash }); // Hash value is sent as response
+        res.json({ hash: hash }); // Hash value is sent as response
       }
     } catch (error) {
       console.log("Error payment:", error);
       res.status(500).send("Internal Server Error");
     }
   };
+  private createClient = async (req, res) => {
+    try {
+      if (!req.body.name || !req.body.number || !req.body.email) {
+        return res.status(400).send("Mandatory fields missing");
+      }
+
+      const { name, email, number } = req.body;
+      const db = client.db(req.headers.name);
+
+      let user;
+      const uid = req.cookies.uid;
+
+      if (uid) {
+        // Check if user exists by uid
+        user = await db.collection("clients").findOne({ _id: uid });
+      }
+
+      if (!user) {
+        // Check if user exists by number or email
+        user = await db
+          .collection("clients")
+          .findOne({ $or: [{ email }, { number }] });
+      }
+
+      if (user) {
+        // Update user details if changed
+        const updateFields: {
+          email?: string;
+          name?: string;
+          number?: string;
+        } = {};
+        if (user.name !== name) updateFields.name = name;
+        if (user.email !== email) updateFields.email = email;
+        if (user.number !== number) updateFields.number = number;
+
+        if (Object.keys(updateFields).length > 0) {
+          await db
+            .collection("clients")
+            .updateOne({ _id: user._id }, { $set: updateFields });
+        }
+
+        // Set the cookie if it wasn't already set
+        if (!uid) {
+          res.cookie("uid", user._id.toString(), {
+            maxAge: 9999999,
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+          });
+        }
+
+        return res.json({ id: user._id });
+      }
+
+      // Create new user if not found
+      const insertRes = await db
+        .collection("clients")
+        .insertOne({ name, email, number, orders: [] });
+      console.log(
+        "🚀 ~ RestaurantController ~ createClient= ~ insertRes:",
+        insertRes
+      );
+
+      res.cookie("uid", insertRes.insertedId.toString(), {
+        maxAge: 9999999,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+      });
+
+      return res.json({ id: insertRes.insertedId });
+    } catch (error) {
+      console.log("Error creating client:", error);
+      res.status(500).send("Internal Server Error");
+    }
+  };
+
   private paymentSuccess = async (req, res) => {
-    const { status, txnid, amount, hash } = req.body;
+    const {
+      mihpayid,
+      status,
+      txnid,
+      amount,
+      hash,
+      firstname,
+      lastname,
+      productinfo,
+      mode,
+      udf1,
+      udf2,
+      phone,
+    } = req.body;
 
     // Verify hash
-    const hashString = `${process.env.PAYU_SALT}|${status}|||||||||||${req.body.email}|${req.body.firstname}|${req.body.productinfo}|${amount}|${txnid}|${process.env.PAYU_KEY}`;
+    const hashString = `${process.env.PAYU_SALT}|${status}|||||||||${udf2}|${udf1}|${req.body.email}|${req.body.firstname}|${req.body.productinfo}|${amount}|${txnid}|${process.env.PAYU_KEY}`;
     const expectedHash = crypto
       .createHash("sha512")
       .update(hashString)
       .digest("hex");
+
     console.log(req.body);
+
     if (hash === expectedHash) {
       console.log("success");
-      // Payment successful
-      res.json({ success: true, message: "Payment successful" });
+
+      try {
+        const db = client.db(udf2);
+        await db
+          .collection("clients")
+          .findOneAndUpdate({ _id: udf1 }, { $addToSet: { orders: mihpayid } });
+        // }
+
+        // Insert order
+        const newOrder = {
+          _id: mihpayid,
+          status,
+          txnid,
+          amount,
+          list: productinfo,
+          mode,
+          client: udf1,
+        };
+        const insertOrderResult = await db
+          .collection("orders")
+          .insertOne(newOrder);
+        // Payment successful
+        res.json({ success: true, message: "Payment successful" });
+      } catch (error) {
+        console.error("Error processing payment:", error);
+        res
+          .status(500)
+          .json({ success: false, message: "Internal Server Error" });
+      } finally {
+        await client.close();
+      }
     } else {
       // Invalid hash
       res.json({ success: false, message: "Invalid hash" });

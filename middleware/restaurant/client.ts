@@ -8,7 +8,7 @@ const restaurantMiddleware = async (
   next: NextFunction
 ) => {
   try {
-    const [name] = req.subdomains.slice(-1);
+    const [name] = req.subdomains.slice(-2);
     console.log("🚀 ~ name:", name);
     req.headers.name = name[0].toUpperCase() + name.slice(1);
 
