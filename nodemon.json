@@ -1,5 +1,8 @@
 {
-    "verbose": true,
+    "verbose": false,
+    "ignore": [
+        "client/**/*.ts"
+    ],
     "watch": [
         "**/*.ts",
         ".env"

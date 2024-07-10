@@ -23,6 +23,14 @@ const upload = multer({
     fileSize: 2 * 1024 * 1024, // Maximum file size (in bytes), here it's set to 2MB
   },
 });
+import { Cashfree, KycDetails } from "cashfree-pg";
+
+Cashfree.XClientId = process.env.CASHFREE_XCLIENT_ID;
+Cashfree.XClientSecret = process.env.CASHFREE_XCLIENT_SECRET;
+Cashfree.XEnvironment =
+  process.env.NODE_ENV === "production"
+    ? Cashfree.Environment.PRODUCTION
+    : Cashfree.Environment.SANDBOX;
 class RestaurantController {
   private router: express.Router;
   private route = "/restaurant";
@@ -67,11 +75,29 @@ class RestaurantController {
       restaurantMiddleware,
       this.getStatus
     );
+    this.router.get(
+      `${this.route}/clients`,
+      authMiddleware,
+      restaurantMiddleware,
+      this.getClients
+    );
     // this.router.put(
     //   `${this.route}/menu`,
     //   upload.array("images", 20),
     //   this.handleMenuUpdate
     // );
+    this.router.post(
+      `${this.route}/bank`,
+      authMiddleware,
+      restaurantMiddleware,
+      this.createVendor
+    );
+    this.router.get(
+      `${this.route}/bank`,
+      authMiddleware,
+      restaurantMiddleware,
+      this.getVendor
+    );
     this.router.post(`${this.route}/verification`, this.handleWebhook);
     // this.router.post(
     //   `${this.route}/menu`,
@@ -122,6 +148,121 @@ class RestaurantController {
     //   webhookSignature,
     //   webhookSecret
     // );
+  };
+  private createVendor = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      const { upi, details: payMethodDetails } = req.body;
+      const { name } = req.headers;
+      console.log("🚀 ~ RestaurantController ~ name:", name);
+      //@ts-ignore
+      const db = client.db(name);
+      const details = await db.collection("details").findOne();
+      console.log("🚀 ~ RestaurantController ~ details:", details);
+      const payMethod = upi
+        ? { bank: { ...payMethodDetails.details } }
+        : { upi: { ...payMethodDetails.details } };
+      console.log("🚀 ~ RestaurantController ~ payMethod:", payMethod);
+      // const response = await Cashfree.PGESCreateVendors("2022-09-01", "", "", {
+      //   vendor_id: details._id.toString(),
+      //   status: "ACTIVE",
+      //   name: name as string,
+      //   email: details.email,
+      //   phone: details.number,
+      //   verify_account: true,
+      //   dashboard_access: false,
+      //   schedule_option: 2,
+      //   ...payMethod,
+      //   kyc_details: [
+      //     {
+      //       account_type: "Proprietorship",
+      //       business_type: "Jewellery",
+      //       uidai: 655675523712,
+      //       gst: "29AAICP2912R1ZR",
+      //       cin: "L00000Aa0000AaA000000",
+      //       pan: "ABCPV1234D",
+      //       passport_number: "L6892603",
+      //     },
+      //   ],
+      // });
+      const data = await fetch(
+        "https://sandbox.cashfree.com/pg/easy-split/vendors",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            vendor_id: details._id.toString(),
+            status: "ACTIVE",
+            name: name as string,
+            email: details.email,
+            phone: details.number,
+            verify_account: true,
+            dashboard_access: false,
+            schedule_option: 2,
+            ...payMethod,
+            kyc_details: {
+              account_type: "Proprietorship",
+              business_type: "Jewellery",
+              uidai: "655675523712",
+              gst: "29AAICP2912R1ZR",
+              pan: "ABCPV1234D",
+            },
+          }),
+          headers: {
+            "x-api-version": "2022-09-01",
+            "x-client-id": process.env.CASHFREE_XCLIENT_ID,
+            "x-client-secret": process.env.CASHFREE_XCLIENT_SECRET,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      const response = await data.json();
+
+      if (response.vendor_id) {
+        details.vendor_id = response.vendor_id;
+        await db
+          .collection("details")
+          .updateOne(
+            { _id: details._id },
+            { $set: { vendor_id: response.vendor_id } }
+          );
+        console.log(
+          "🚀 ~ RestaurantController ~ Updated details with vendor_id:",
+          details.vendor_id
+        );
+      }
+      res.json({ response: response });
+    } catch (error) {
+      console.log("🚀 ~ RestaurantController ~ error:", error);
+    }
+  };
+  private getVendor = async (req: express.Request, res: express.Response) => {
+    try {
+      const { name } = req.headers;
+      console.log("🚀 ~ RestaurantController ~ name:", name);
+      //@ts-ignore
+      const db = client.db(name);
+      const details = await db.collection("details").findOne();
+      const data = await fetch(
+        `https://sandbox.cashfree.com/pg/easy-split/vendors/${details.vendor_id}`,
+        {
+          method: "GET",
+          headers: {
+            "x-api-version": "2022-09-01",
+            "x-client-id": process.env.CASHFREE_XCLIENT_ID,
+            "x-client-secret": process.env.CASHFREE_XCLIENT_SECRET,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      console.log("🚀 ~ RestaurantController ~ data:", data);
+      const response = await data.json();
+      console.log("🚀 ~ RestaurantController ~ response:", response);
+      res.json({ response: response });
+    } catch (error) {
+      console.log("🚀 ~ RestaurantController ~ error:", error);
+    }
   };
   private createDatabase = async (databaseName: string) => {
     try {
@@ -177,7 +318,7 @@ class RestaurantController {
           ])
           .toArray();
       }
-      const menu = menuRes.reduce((acc, category) => {
+      const menu = menuRes?.reduce((acc, category) => {
         acc[category.name] = {
           _id: category._id,
           dishes: category.dishes,
@@ -188,6 +329,37 @@ class RestaurantController {
         status: collections.length === 1 ? 1 : collections.length === 3 ? 2 : 3,
         menu,
         details,
+      });
+    } catch (err) {
+      console.log(err);
+      res.status(500).send(err);
+    }
+  };
+
+  private getClients = async (req: express.Request, res: express.Response) => {
+    try {
+      const { name } = req.headers;
+      //@ts-ignore
+      const db = client.db(name);
+      const collections = await db.collections();
+      let clientsRes;
+      if (collections.length >= 3) {
+        clientsRes = await db
+          .collection("clients")
+          .aggregate([
+            {
+              $lookup: {
+                from: "orders",
+                localField: "orders",
+                foreignField: "_id",
+                as: "orders",
+              },
+            },
+          ])
+          .toArray();
+      }
+      res.json({
+        clients: clientsRes,
       });
     } catch (err) {
       console.log(err);
@@ -424,7 +596,12 @@ class RestaurantController {
 
       await Promise.all(categoryPromises);
 
-      if (draft == "false") await db.createCollection("clients");
+      if (draft == "false") {
+        await Promise.all([
+          db.createCollection("clients"),
+          db.createCollection("order"),
+        ]);
+      }
 
       res.json({ status: draft === "false" ? 4 : 3 });
     } catch (err) {
