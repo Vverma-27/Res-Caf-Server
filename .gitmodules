@@ -1,0 +1,3 @@
+[submodule "client"]
+	path = client
+	url = git@github.com:Vverma-27/Res-Cafe.git
