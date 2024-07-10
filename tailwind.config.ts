@@ -5,6 +5,7 @@ const config: Config = {
     "./client/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./client/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./client/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./client/constants/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
@@ -18,9 +19,17 @@ const config: Config = {
         mono: ["Overpass Mono", "monospace"],
         signika: ["Signika", "sans-serif"],
         manrope: ["Manrope", "sans-serif"],
+        inria: ["Inria Sans", "sans-serif"],
+        inter: ["Inter", "sans-serif"],
       },
       boxShadow: {
-        custom: "-3px 5px 14px -1px rgba(255, 153, 0, 0.3)",
+        custom: "-1px 1px 4px -1px rgb(255, 153, 0)",
+      },
+      backgroundColor: {
+        random0: "#2EA0F1",
+        random1: "#F12E2E",
+        random2: "#2EF1AB",
+        random3: "#F1D22E",
       },
       fontSize: {
         xxs: "0.6rem",
