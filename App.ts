@@ -108,26 +108,26 @@ class App {
       }
     );
   }
-  private async initializeNext() {
-    const dev = process.env.NODE_ENV !== "production";
-    const nextApp = next({ dev, dir: "./client" }); // Point to the client directory
-    await nextApp.prepare();
+  // private async initializeNext() {
+  //   const dev = process.env.NODE_ENV !== "production";
+  //   const nextApp = next({ dev, dir: "./client" }); // Point to the client directory
+  //   await nextApp.prepare();
 
-    // Define a route handler to handle all Next.js requests
-    console.log("🚀 ~ App ~ initializeNext ~ dev:", dev);
-    this.app.get("/", (req, res, next) => {
-      console.log("🚀 ~ App ~ initializeNext ~ dev:", dev);
-      if (
-        req.method === "GET" &&
-        req.subdomains.slice(-1)[0] !== "api" &&
-        req.subdomains.slice(-1)[0] !== "admin"
-      ) {
-        return nextApp.getRequestHandler()(req, res);
-      } else {
-        return next();
-      }
-    });
-  }
+  //   // Define a route handler to handle all Next.js requests
+  //   console.log("🚀 ~ App ~ initializeNext ~ dev:", dev);
+  //   this.app.get("/", (req, res, next) => {
+  //     console.log("🚀 ~ App ~ initializeNext ~ dev:", dev);
+  //     if (
+  //       req.method === "GET" &&
+  //       req.subdomains.slice(-1)[0] !== "api" &&
+  //       req.subdomains.slice(-1)[0] !== "admin"
+  //     ) {
+  //       return nextApp.getRequestHandler()(req, res);
+  //     } else {
+  //       return next();
+  //     }
+  //   });
+  // }
   logUsersInRoom = (room: string) => {
     const clients = this.io.sockets.adapter.rooms.get(room);
     if (clients) {
