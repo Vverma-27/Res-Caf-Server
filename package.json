@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
-    "start": "node dist/index.js",
+    "start": "NODE_ENV=production node dist/index.js",
     "dev-client": "next dev -p 3001 ./client",
     "dev": "nodemon --legacy-watch --exec tsx ./index.ts",
     "ngrok-server": "ngrok http 3000",
