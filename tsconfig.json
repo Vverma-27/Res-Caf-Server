@@ -12,5 +12,6 @@
       "*": ["node_modules/*"]
     }
   },
+  "exclude": ["client"],
   "lib": ["es2015"]
 }

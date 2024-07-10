@@ -14,6 +14,15 @@ import { DefaultEventsMap } from "socket.io/dist/typed-events";
 interface CustomSocket extends Socket {
   clientName: string; // Define your custom property here
 }
+interface IShareReq {
+  name: string;
+  dish: string;
+  price: number;
+  image: string;
+  veg: boolean;
+  _id: string;
+  numSplitters: number;
+}
 
 class App {
   private app: express.Application;
@@ -126,8 +135,7 @@ class App {
       clients.forEach((clientId) => {
         const clientSocket = this.io.sockets.sockets.get(clientId);
         if (clientSocket) {
-          console.log(`- ${clientSocket.id}`);
-          console.log(`  User Agent:`, clientSocket.deviceInfo); // Access stored device info
+          console.log(`- ${clientSocket.id}`); // Access stored device info
         }
       });
     } else {
@@ -140,7 +148,9 @@ class App {
     if (clients) {
       console.log(`Users in room ${room}:`);
       clients.forEach((clientId) => {
-        const clientSocket = this.io.sockets.sockets.get(clientId);
+        const clientSocket = this.io.sockets.sockets.get(
+          clientId
+        ) as CustomSocket;
         if (clientSocket) {
           sockets.push(clientSocket.clientName);
           console.log(`- ${clientSocket.id}`);
@@ -151,6 +161,24 @@ class App {
       console.log(`Room ${room} does not exist or is empty`);
     }
     return sockets;
+  };
+  getSocketsByName = (room: string, name: string) => {
+    const clients = this.io.sockets.adapter.rooms.get(room);
+    const socket = null;
+    if (clients) {
+      console.log(`Users in room ${room}:`);
+      clients.forEach((clientId) => {
+        const clientSocket = this.io.sockets.sockets.get(
+          clientId
+        ) as CustomSocket;
+        if (clientSocket.clientName === name) {
+          return socket;
+        }
+      });
+    } else {
+      console.log(`Room ${room} does not exist or is empty`);
+    }
+    return null;
   };
   public listen() {
     this.io.on("connection", (socket: CustomSocket) => {
@@ -168,6 +196,38 @@ class App {
       } else {
         console.log("No table parameter provided in query");
       }
+      socket.on("send-req", (e: IShareReq) => {
+        const socketsInRoom = this.io.sockets.adapter.rooms.get(tableRoom);
+        if (socketsInRoom) {
+          for (const socketId of socketsInRoom) {
+            const targetSocket = this.io.sockets.sockets.get(
+              socketId as string
+            ) as CustomSocket;
+            if (targetSocket && targetSocket.clientName === e.name) {
+              targetSocket.emit("share-req", { ...e, name }); // Send the request to the target socket
+              break;
+            }
+          }
+        }
+      });
+      socket.on("accept-req", (e: IShareReq) => {
+        const socketsInRoom = this.io.sockets.adapter.rooms.get(tableRoom);
+        if (socketsInRoom) {
+          for (const socketId of socketsInRoom) {
+            const targetSocket = this.io.sockets.sockets.get(
+              socketId as string
+            ) as CustomSocket;
+            if (targetSocket && targetSocket.clientName === e.name) {
+              targetSocket.emit("accept-req", { ...e, name }); // Send the request to the target socket
+              targetSocket.broadcast.emit("update-splitters", {
+                dish: e.dish,
+                numSplitters: e.numSplitters + 1,
+              });
+              break;
+            }
+          }
+        }
+      });
       socket.on("disconnect", () => {
         this.io.to(tableRoom).emit("users", this.getSocketsInRoom(tableRoom));
         console.log("user disconnected");

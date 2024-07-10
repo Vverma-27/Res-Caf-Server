@@ -9,8 +9,8 @@
     "dev-server": "nodemon --legacy-watch --exec tsx ./index.ts",
     "ngrok-server": "ngrok http 3000",
     "build": "npm run build-client && npm run build-server",
-    "build-client": "next build",
-    "build-server": "tsc -p server",
+    "build-client": "cd client && next build",
+    "build-server": "tsc -b",
     "lint": "eslint . --ext .ts,.tsx"
   },
   "author": "Vihaan Verma <vverma270705@gmail.com>",
@@ -19,6 +19,7 @@
   "dependencies": {
     "axios": "^1.7.2",
     "canvas": "^2.11.2",
+    "cashfree-pg": "^4.1.2",
     "cloudinary": "^2.2.0",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",

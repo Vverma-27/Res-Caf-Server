@@ -9,8 +9,7 @@ const restaurantMiddleware = async (
 ) => {
   try {
     const [name] = req.subdomains.slice(-2);
-    console.log("🚀 ~ name:", name);
-    req.headers.name = name[0].toUpperCase() + name.slice(1);
+    req.headers.name = name.toLowerCase();
 
     // List all databases
     const adminDb = client.db().admin();

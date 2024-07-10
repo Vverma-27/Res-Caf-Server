@@ -7,6 +7,14 @@ import restaurantMiddleware from "../middleware/restaurant/client";
 import axios from "axios";
 import jsSHA from "jssha";
 import { ObjectId } from "mongodb";
+import { Cashfree } from "cashfree-pg";
+
+Cashfree.XClientId = process.env.CASHFREE_XCLIENT_ID;
+Cashfree.XClientSecret = process.env.CASHFREE_XCLIENT_SECRET;
+Cashfree.XEnvironment =
+  process.env.NODE_ENV === "production"
+    ? Cashfree.Environment.PRODUCTION
+    : Cashfree.Environment.SANDBOX;
 
 class RestaurantController {
   private router: express.Router;
@@ -27,6 +35,11 @@ class RestaurantController {
       `${this.route}/payment`,
       restaurantMiddleware,
       this.makePayment
+    );
+    this.router.post(
+      `${this.route}/payment/order`,
+      restaurantMiddleware,
+      this.createOrderCashfree
     );
     this.router.post(`${this.route}/payment/success`, this.paymentSuccess);
     this.router.post(`${this.route}/payment/failure`, this.paymentFail);
@@ -54,6 +67,59 @@ class RestaurantController {
     } catch (err) {
       console.log(err);
       res.status(500).send(err);
+    }
+  };
+  private createOrderCashfree = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      const { name } = req.headers;
+      const pd = req.body;
+      if (
+        !pd.amount ||
+        !pd.customer_id ||
+        !pd.number ||
+        !pd.name ||
+        !pd.email ||
+        !pd.txnid ||
+        !pd.productinfo
+      ) {
+        res.send("Mandatory fields missing");
+      } else {
+        const request = {
+          order_amount: parseFloat(parseInt(pd.amount).toFixed(2)),
+          order_currency: "INR",
+          order_id: `order_${name}_${pd.txnid}`,
+          customer_details: {
+            customer_id: pd.customer_id,
+            customer_phone: pd.number,
+            customer_name: pd.name,
+            customer_email: pd.email,
+          },
+          order_meta: {
+            return_url:
+              "https://www.cashfree.com/devstudio/preview/pg/web/checkout?order_id={order_id}",
+            notify_url:
+              "https://www.cashfree.com/devstudio/preview/pg/webhooks/69734225",
+          },
+          // order_expiry_time: "2024-06-08T20:35:31.523Z",
+          order_note: pd.productinfo,
+          order_tags: {
+            restaurant: name as string,
+            items: pd.productinfo,
+          },
+        };
+        const { data: order } = await Cashfree.PGCreateOrder(
+          "2023-08-01",
+          request
+        );
+        console.log("🚀 ~ RestaurantController ~ order:", order);
+        res.json({ session_id: order.payment_session_id });
+      }
+    } catch (error) {
+      console.log("Error payment:", error);
+      res.status(500).send("Internal Server Error");
     }
   };
   private getRestaurant = async (
