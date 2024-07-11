@@ -9,6 +9,10 @@
                     "dist/**"
                 ]
             }
+        },
+        {
+            "src": "client/next.config.js",
+            "use": "@vercel/next"
         }
     ],
     "routes": [
