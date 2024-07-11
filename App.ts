@@ -3,6 +3,7 @@ import config from "./config";
 import cors from "cors";
 import mongoose from "mongoose";
 import next from "next";
+//@ts-ignore
 import cookieParser from "cookie-parser";
 import initializeCloudinary from "./services/cloudinary";
 import initialiseFirebaseAdmin from "./services/firebase";
