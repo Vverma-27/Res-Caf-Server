@@ -8,7 +8,7 @@
     "dev": "nodemon --legacy-watch --exec tsx ./index.ts",
     "ngrok-server": "ngrok http 3000",
     "build": "npm run build-client && npm run build-server",
-    "build-client": "cd client && set NODE_ENV=production & next build",
+    "build-client": "cd client && set NODE_ENV=production && next build",
     "build-server": "tsc -b",
     "lint": "eslint . --ext .ts,.tsx"
   },
