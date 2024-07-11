@@ -8,7 +8,6 @@ import cookieParser from "cookie-parser";
 import initializeCloudinary from "./services/cloudinary";
 import initialiseFirebaseAdmin from "./services/firebase";
 import initializeClient from "./services/mongo";
-import UAParser from "ua-parser-js";
 import { Server, Socket } from "socket.io";
 import { createServer } from "http";
 import { DefaultEventsMap } from "socket.io/dist/typed-events";
