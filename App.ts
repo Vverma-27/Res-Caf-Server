@@ -1,5 +1,4 @@
 import express from "express";
-import config from "./config";
 import cors from "cors";
 import mongoose from "mongoose";
 import next from "next";

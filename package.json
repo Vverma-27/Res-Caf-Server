@@ -1,14 +1,14 @@
 {
   "name": "resandcaf",
   "version": "1.0.0",
-  "main": "dist/index.js",
+  "main": "server/dist/index.js",
   "scripts": {
-    "start": "node dist/index.js",
+    "start": "node server/dist/index.js",
     "dev-client": "next dev -p 3001 ./client",
     "dev": "nodemon --legacy-watch --exec tsx ./index.ts",
     "ngrok-server": "ngrok http 3000",
     "build": "npm run build-client && npm run build-server",
-    "build-client": "cd client && next build",
+    "build-client": "cd client && ls && next build",
     "build-server": "tsc -b",
     "lint": "eslint . --ext .ts,.tsx"
   },
