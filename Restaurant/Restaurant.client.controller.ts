@@ -1,12 +1,8 @@
 import express from "express";
 import crypto from "crypto";
 import { client } from "../services/mongo";
-import { URLSearchParams } from "url";
-import fetch from "node-fetch";
 import restaurantMiddleware from "../middleware/restaurant/client";
-import axios from "axios";
 import jsSHA from "jssha";
-import { ObjectId } from "mongodb";
 import { Cashfree } from "cashfree-pg";
 
 Cashfree.XClientId = process.env.CASHFREE_XCLIENT_ID;
