@@ -12,6 +12,7 @@ docker-compose.dev.yml
 docker-compose.prod.yml
 docker-compose.yml
 Dockerfile
+.dockerignore
 /nginx
 # production
 /dist
