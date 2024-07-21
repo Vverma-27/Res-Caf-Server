@@ -69,6 +69,12 @@ class RestaurantController {
       restaurantMiddleware,
       this.deleteDish
     );
+    this.router.put(
+      `${this.route}/dish/unavailable/:catId/:dishId`,
+      authMiddleware,
+      restaurantMiddleware,
+      this.setDishUnavailable
+    );
     this.router.get(
       `${this.route}/status`,
       authMiddleware,
@@ -460,6 +466,35 @@ class RestaurantController {
       );
 
       res.json({ msg: "deleted" });
+    } catch (err) {
+      console.log(err);
+      res.status(500).send(err);
+    }
+  };
+
+  private setDishUnavailable = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      const { catId, dishId } = req.params;
+      const { available } = req.body;
+      const { name } = req.headers;
+
+      if (!catId || !dishId)
+        return res.status(400).json({ msg: "catId or dishId is missing" });
+      //@ts-ignore
+      const db = client.db(name);
+      //@ts-ignore
+      const dish = await db
+        .collection("dishes")
+        .findOneAndUpdate(
+          { _id: dishId },
+          { $set: { unavailable: !available } },
+          { returnDocument: "after" }
+        );
+
+      res.json({ msg: "updated", dish });
     } catch (err) {
       console.log(err);
       res.status(500).send(err);

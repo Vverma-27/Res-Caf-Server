@@ -4,6 +4,7 @@ import { client } from "../services/mongo";
 import restaurantMiddleware from "../middleware/restaurant/client";
 import jsSHA from "jssha";
 import { Cashfree } from "cashfree-pg";
+import { ObjectId } from "mongodb";
 
 Cashfree.XClientId = process.env.CASHFREE_XCLIENT_ID;
 Cashfree.XClientSecret = process.env.CASHFREE_XCLIENT_SECRET;
@@ -38,6 +39,7 @@ class RestaurantController {
       this.createOrderCashfree
     );
     this.router.post(`${this.route}/payment/success`, this.paymentSuccess);
+    this.router.post(`${this.route}/verify`, this.verifyPayment);
     this.router.post(`${this.route}/payment/failure`, this.paymentFail);
   }
   private getPastOrders = async (
@@ -99,7 +101,6 @@ class RestaurantController {
             notify_url:
               "https://www.cashfree.com/devstudio/preview/pg/webhooks/69734225",
           },
-          // order_expiry_time: "2024-06-08T20:35:31.523Z",
           order_note: pd.productinfo,
           order_tags: {
             restaurant: name as string,
@@ -285,6 +286,73 @@ class RestaurantController {
     } catch (error) {
       console.log("Error creating client:", error);
       res.status(500).send("Internal Server Error");
+    }
+  };
+
+  private verifyPayment = async (req, res) => {
+    try {
+      const response = Cashfree.PGVerifyWebhookSignature(
+        req.headers["x-webhook-signature"],
+        req.rawBody,
+        req.headers["x-webhook-timestamp"]
+      );
+      console.log(
+        "🚀 ~ RestaurantController ~ verifyPayment= ~ response:",
+        response
+      );
+      if (response.object) {
+        const { data, event_time } = req.body;
+        console.log("🚀 ~ RestaurantController ~ verifyPayment= ~ data:", data);
+        const orderDetails = data.order.order_tags.items.split(",").map((e) => {
+          const [num, dishId] = e.split(":");
+          return { dish: dishId, qty: parseInt(num) };
+        });
+        const orderObj = {
+          amount: data.order.order_amount,
+          orderID: data.order.order_id,
+          date: event_time,
+          clientId: new ObjectId(`${data.customer_details.customer_id}`),
+          orderDetails,
+        };
+        const { restaurant } = data.order.order_tags;
+        const db = client.db(restaurant);
+        const result = await db.collection("order").insertOne(orderObj);
+        const { vendor_id } = await db.collection("details").findOne();
+
+        // Check if the order was inserted successfully
+        if (result.insertedId) {
+          // Update the client by adding the order ID to the orders array
+          await db
+            .collection("clients")
+            .findOneAndUpdate(
+              { _id: new ObjectId(`${data.customer_details.customer_id}`) },
+              { $push: { orders: result.insertedId } }
+            );
+        }
+        const response = await fetch(
+          `https://sandbox.cashfree.com/pg/easy-split/orders/${data.order.order_id}/split`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              split: {
+                vendor_id,
+                percentage: "90",
+              },
+              disable_split: true,
+            }),
+            headers: {
+              "x-api-version": "2023-08-01",
+              "x-client-id": process.env.CASHFREE_XCLIENT_ID,
+              "x-client-secret": process.env.CASHFREE_XCLIENT_SECRET,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        console.log("response ", response);
+      }
+      res.status(200);
+    } catch (err) {
+      console.log(err.message);
     }
   };
 
