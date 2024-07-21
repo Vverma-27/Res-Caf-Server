@@ -8,7 +8,6 @@ import cloudinary from "cloudinary";
 import fs from "fs";
 import path from "path";
 import Tesseract, { createWorker } from "tesseract.js";
-import sharp from "sharp";
 import authMiddleware from "../middleware/auth";
 import { MongoClient, ObjectId } from "mongodb";
 import config from "../config";

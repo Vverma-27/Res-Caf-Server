@@ -2,7 +2,7 @@ import express from "express";
 import crypto from "crypto";
 import { client } from "../services/mongo";
 import restaurantMiddleware from "../middleware/restaurant/client";
-import jsSHA from "jssha";
+// import jsSHA from "jssha";
 import { Cashfree } from "cashfree-pg";
 import { ObjectId } from "mongodb";
 
@@ -28,11 +28,11 @@ class RestaurantController {
       restaurantMiddleware,
       this.getPastOrders
     );
-    this.router.post(
-      `${this.route}/payment`,
-      restaurantMiddleware,
-      this.makePayment
-    );
+    // this.router.post(
+    //   `${this.route}/payment`,
+    //   restaurantMiddleware,
+    //   this.makePayment
+    // );
     this.router.post(
       `${this.route}/payment/order`,
       restaurantMiddleware,
@@ -167,51 +167,51 @@ class RestaurantController {
       res.status(500).send(err);
     }
   };
-  private makePayment = async (req, res) => {
-    try {
-      if (
-        !req.body.txnid ||
-        !req.body.amount ||
-        !req.body.productinfo ||
-        !req.body.firstname ||
-        !req.body.email ||
-        !req.body.udf1 ||
-        !req.body.udf2
-      ) {
-        res.send("Mandatory fields missing");
-      } else {
-        const pd = req.body;
-        const hashString =
-          process.env.PAYU_KEY + // live or test key
-          "|" +
-          pd.txnid +
-          "|" +
-          pd.amount +
-          "|" +
-          pd.productinfo +
-          "|" +
-          pd.firstname +
-          "|" +
-          pd.email +
-          "|" +
-          pd.udf1 +
-          "|" +
-          pd.udf2 +
-          "|" +
-          "||||||||" +
-          process.env.PAYU_SALT; // live or test salt
+  // private makePayment = async (req, res) => {
+  //   try {
+  //     if (
+  //       !req.body.txnid ||
+  //       !req.body.amount ||
+  //       !req.body.productinfo ||
+  //       !req.body.firstname ||
+  //       !req.body.email ||
+  //       !req.body.udf1 ||
+  //       !req.body.udf2
+  //     ) {
+  //       res.send("Mandatory fields missing");
+  //     } else {
+  //       const pd = req.body;
+  //       const hashString =
+  //         process.env.PAYU_KEY + // live or test key
+  //         "|" +
+  //         pd.txnid +
+  //         "|" +
+  //         pd.amount +
+  //         "|" +
+  //         pd.productinfo +
+  //         "|" +
+  //         pd.firstname +
+  //         "|" +
+  //         pd.email +
+  //         "|" +
+  //         pd.udf1 +
+  //         "|" +
+  //         pd.udf2 +
+  //         "|" +
+  //         "||||||||" +
+  //         process.env.PAYU_SALT; // live or test salt
 
-        // Create a SHA-512 hash using the crypto library
-        var sha = new jsSHA("SHA-512", "TEXT"); //encryption taking place
-        sha.update(hashString);
-        var hash = sha.getHash("HEX"); //hashvalue converted to hexvalue
-        res.json({ hash: hash }); // Hash value is sent as response
-      }
-    } catch (error) {
-      console.log("Error payment:", error);
-      res.status(500).send("Internal Server Error");
-    }
-  };
+  //       // Create a SHA-512 hash using the crypto library
+  //       var sha = new jsSHA("SHA-512", "TEXT"); //encryption taking place
+  //       sha.update(hashString);
+  //       var hash = sha.getHash("HEX"); //hashvalue converted to hexvalue
+  //       res.json({ hash: hash }); // Hash value is sent as response
+  //     }
+  //   } catch (error) {
+  //     console.log("Error payment:", error);
+  //     res.status(500).send("Internal Server Error");
+  //   }
+  // };
   private createClient = async (req, res) => {
     try {
       if (!req.body.name || !req.body.number || !req.body.email) {
