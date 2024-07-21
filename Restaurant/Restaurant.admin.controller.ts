@@ -484,14 +484,12 @@ class RestaurantController {
         return res.status(400).json({ msg: "catId or dishId is missing" });
       //@ts-ignore
       const db = client.db(name);
-      //@ts-ignore
-      const dish = await db
-        .collection("dishes")
-        .findOneAndUpdate(
-          { _id: dishId },
-          { $set: { unavailable: !available } },
-          { returnDocument: "after" }
-        );
+      const dish = await db.collection("dishes").findOneAndUpdate(
+        //@ts-ignore
+        { _id: dishId },
+        { $set: { unavailable: !available } },
+        { returnDocument: "after" }
+      );
 
       res.json({ msg: "updated", dish });
     } catch (err) {

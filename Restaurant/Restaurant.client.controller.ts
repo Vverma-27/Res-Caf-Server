@@ -322,12 +322,11 @@ class RestaurantController {
         // Check if the order was inserted successfully
         if (result.insertedId) {
           // Update the client by adding the order ID to the orders array
-          await db
-            .collection("clients")
-            .findOneAndUpdate(
-              { _id: new ObjectId(`${data.customer_details.customer_id}`) },
-              { $push: { orders: result.insertedId } }
-            );
+          await db.collection("clients").findOneAndUpdate(
+            { _id: new ObjectId(`${data.customer_details.customer_id}`) },
+            //@ts-ignore
+            { $push: { orders: result.insertedId } }
+          );
         }
         const response = await fetch(
           `https://sandbox.cashfree.com/pg/easy-split/orders/${data.order.order_id}/split`,
