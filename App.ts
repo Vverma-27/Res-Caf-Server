@@ -52,7 +52,19 @@ class App {
     this.initializeControllers(controllers);
   }
   private initializeMiddlewares() {
-    this.app.use(express.json());
+    this.app.use(
+      express.json({
+        verify: (req, res, buf) => {
+          //@ts-ignore
+          req.rawBody = buf;
+          console.log(
+            "🚀 ~ initializeMiddlewares ~ req.rawBody:",
+            //@ts-ignore
+            req.rawBody.toString("utf-8")
+          );
+        },
+      })
+    );
     this.app.use(express.urlencoded({ extended: true }));
     const corsOptions = {
       credentials: true,
@@ -79,14 +91,18 @@ class App {
           //   "🚀 ~ App ~ this.app.use ~ req.subdomains.slice(-2)[0]:",
           //   req.subdomains.slice(-1)[0] === "api"
           // );
-          if (req.subdomains.slice(-1)[0] === "api") {
+          if (req.subdomains.slice(-2)[0] === "api") {
             if (
-              subdomain === req.subdomains.slice(-2)[0] ||
+              subdomain === req.subdomains.slice(-1)[0] ||
               (subdomain === "client" &&
                 req.subdomains.length > 0 &&
-                req.subdomains.slice(-2)[0] !== "admin" &&
-                req.subdomains.slice(-2)[0] !== "example")
+                req.subdomains.slice(-1)[0] !== "admin" &&
+                req.subdomains.slice(-1)[0] !== "example")
             ) {
+              console.log(
+                "🚀 ~ this.app.use ~ req.subdomains:",
+                req.subdomains
+              );
               // console.log(
               //   "🚀 ~ App ~ this.app.use ~ req.subdomains.slice(-2)[0]:",
               //   req.subdomains.slice(-1)[0] === "api"

@@ -8,10 +8,10 @@ import { ObjectId } from "mongodb";
 
 Cashfree.XClientId = process.env.CASHFREE_XCLIENT_ID;
 Cashfree.XClientSecret = process.env.CASHFREE_XCLIENT_SECRET;
-Cashfree.XEnvironment =
-  process.env.NODE_ENV === "production"
-    ? Cashfree.Environment.PRODUCTION
-    : Cashfree.Environment.SANDBOX;
+Cashfree.XEnvironment = Cashfree.Environment.SANDBOX;
+// process.env.NODE_ENV === "production"
+//   ? Cashfree.Environment.PRODUCTION
+//   :
 
 class RestaurantController {
   private router: express.Router;
@@ -42,26 +42,63 @@ class RestaurantController {
     this.router.post(`${this.route}/verify`, this.verifyPayment);
     this.router.post(`${this.route}/payment/failure`, this.paymentFail);
   }
+  private getDishesFromOrders = async (uid: string, name: string) => {
+    try {
+      //@ts-ignore
+      const db = client.db(name);
+      // Fetch orders with orderDetails
+      const orders = await db
+        .collection("orders")
+        .aggregate([
+          { $match: { clientId: uid } },
+          { $project: { orderDetails: 1 } },
+        ])
+        .toArray();
+
+      // Extract dish ObjectIDs
+      const dishObjectIds = orders.flatMap((order) =>
+        order.orderDetails.map((detail) => detail.dish)
+      );
+      const uniqueDishObjectIds = Array.from(new Set(dishObjectIds));
+
+      // Fetch and return dish details
+      const dishes = await db
+        .collection("dishes")
+        .find({ _id: { $in: uniqueDishObjectIds } })
+        .toArray();
+
+      return dishes;
+    } catch (err) {
+      console.error(err);
+      throw new Error("Failed to get dishes from orders");
+    }
+  };
+
   private getPastOrders = async (
     req: express.Request,
     res: express.Response
   ) => {
     try {
-      const { name } = req.headers;
-      console.log("🚀 ~ RestaurantController ~ name:", name);
       const { uid } = req.cookies;
-      //@ts-ignore
-      const db = client.db(name);
-      const collections = await db.collections();
-      if (collections.length <= 3)
-        return res.status(404).send({ msg: "no restaurant found" });
-      const orders = await db
-        .collection("orders")
-        .find({ client: uid })
-        .project({ list: 1 })
-        .toArray();
-
-      res.json({ orders });
+      console.log("🚀 ~ RestaurantController ~ uid:", uid);
+      // const collections = await db.collections();
+      // if (collections.length <= 3)
+      //   return res.status(404).send({ msg: "no restaurant found" });
+      const dishArray = await this.getDishesFromOrders(
+        uid,
+        req.headers.name as string
+      );
+      // const orders = await db
+      //   .collection("orders")
+      //   .aggregate([
+      //     { $match: { clientId: uid } }, // Match documents with the specified clientId
+      //     { $project: { orderDetails: 1 } }, // Only include the orderDetails field
+      //   ])
+      //   .toArray();
+      // const dishArray = orders.flatMap((order) =>
+      //   order.orderDetails.map((detail) => detail.dish)
+      // );
+      res.json({ orders: dishArray });
     } catch (err) {
       console.log(err);
       res.status(500).send(err);
@@ -96,10 +133,8 @@ class RestaurantController {
             customer_email: pd.email,
           },
           order_meta: {
-            return_url:
-              "https://www.cashfree.com/devstudio/preview/pg/web/checkout?order_id={order_id}",
-            notify_url:
-              "https://www.cashfree.com/devstudio/preview/pg/webhooks/69734225",
+            return_url: `https://${name}.resandcaf.online/success`,
+            notify_url: `https://${name}.api.resandcaf.online/restaurant/client/verify`,
           },
           order_note: pd.productinfo,
           order_tags: {
@@ -129,9 +164,9 @@ class RestaurantController {
       console.log("🚀 ~ RestaurantController ~ name:", name);
       //@ts-ignore
       const db = client.db(name);
-      const collections = await db.collections();
-      if (collections.length <= 3)
-        return res.status(404).send({ msg: "no restaurant found" });
+      // const collections = await db.collections();
+      // if (collections.length <= 3)
+      //   return res.status(404).send({ msg: "no restaurant found" });
       let menuRes;
       menuRes = await db
         .collection("categories")
@@ -158,8 +193,9 @@ class RestaurantController {
       //   res.cookie("uid", "abdvsbshwhjw", {
       //     maxAge: 31536000000,
       //     httpOnly: true,
-      //     secure: process.env.NODE_ENV === "production",
-      //     sameSite: "strict",
+      //     secure: false,
+      //     sameSite: "none",
+      //     // sameSite: "strict",
       //   });
       res.json({ menu, name });
     } catch (err) {
@@ -223,6 +259,7 @@ class RestaurantController {
 
       let user;
       const uid = req.cookies.uid;
+      console.log("🚀 ~ RestaurantController ~ createClient= ~ uid:", uid);
 
       if (uid) {
         // Check if user exists by uid
@@ -255,11 +292,13 @@ class RestaurantController {
 
         // Set the cookie if it wasn't already set
         if (!uid) {
+          console.log("setting uid in cookie");
           res.cookie("uid", user._id.toString(), {
             maxAge: 9999999,
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
             sameSite: "strict",
+            // sameSite: "strict",
           });
         }
 
@@ -290,7 +329,22 @@ class RestaurantController {
   };
 
   private verifyPayment = async (req, res) => {
+    const verify = (ts, rawBody) => {
+      const body = req.headers["x-webhook-timestamp"] + req.rawBody;
+      const secretKey = process.env.CASHFREE_XCLIENT_SECRET;
+      let genSignature = crypto
+        .createHmac("sha256", secretKey)
+        .update(body)
+        .digest("base64");
+      return genSignature;
+    };
     try {
+      // console.log(req.body);
+      console.log(req.rawBody);
+      console.log(
+        verify(req.headers["x-webhook-timestamp"], req.rawBody),
+        req.headers["x-webhook-signature"]
+      );
       const response = Cashfree.PGVerifyWebhookSignature(
         req.headers["x-webhook-signature"],
         req.rawBody,
@@ -316,7 +370,7 @@ class RestaurantController {
         };
         const { restaurant } = data.order.order_tags;
         const db = client.db(restaurant);
-        const result = await db.collection("order").insertOne(orderObj);
+        const result = await db.collection("orders").insertOne(orderObj);
         const { vendor_id } = await db.collection("details").findOne();
 
         // Check if the order was inserted successfully

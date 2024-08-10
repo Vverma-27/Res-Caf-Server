@@ -27,9 +27,10 @@ import { Cashfree, KycDetails } from "cashfree-pg";
 Cashfree.XClientId = process.env.CASHFREE_XCLIENT_ID;
 Cashfree.XClientSecret = process.env.CASHFREE_XCLIENT_SECRET;
 Cashfree.XEnvironment =
-  process.env.NODE_ENV === "production"
-    ? Cashfree.Environment.PRODUCTION
-    : Cashfree.Environment.SANDBOX;
+  // process.env.NODE_ENV === "production"
+  //   ? Cashfree.Environment.PRODUCTION
+  //   :
+  Cashfree.Environment.SANDBOX;
 class RestaurantController {
   private router: express.Router;
   private route = "/restaurant";
@@ -631,7 +632,7 @@ class RestaurantController {
       if (draft == "false") {
         await Promise.all([
           db.createCollection("clients"),
-          db.createCollection("order"),
+          db.createCollection("orders"),
         ]);
       }
 

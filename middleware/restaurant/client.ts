@@ -8,7 +8,7 @@ const restaurantMiddleware = async (
   next: NextFunction
 ) => {
   try {
-    const [name] = req.subdomains.slice(-2);
+    const [name] = req.subdomains.slice(-1);
     req.headers.name = name.toLowerCase();
 
     // List all databases
@@ -21,6 +21,11 @@ const restaurantMiddleware = async (
     if (!databaseExists) {
       return res.status(403).send("Unauthorized");
     }
+    //@ts-ignore
+    const db = client.db(name);
+    const collections = await db.collections();
+    if (collections.length <= 3)
+      return res.status(404).send({ msg: "no restaurant found" });
 
     next();
   } catch (e) {
