@@ -50,7 +50,7 @@ class RestaurantController {
       const orders = await db
         .collection("orders")
         .aggregate([
-          { $match: { clientId: uid } },
+          { $match: { clientId: new ObjectId(uid) } },
           { $project: { orderDetails: 1 } },
         ])
         .toArray();
