@@ -27,7 +27,17 @@ export interface IClient {
   orders: mongoose.ObjectId[];
 }
 export interface IOrder {
-  total: number;
-  clientId: mongoose.ObjectId;
-  orderDetails: { dish: mongoose.ObjectId; qty: number }[];
+  _id: ObjectId;
+  amount: number;
+  orderDetails: Array<{ dish: string; qty: number; numSplitters: string }>;
+  status: OrderStatus;
+  remainingAmount: number;
+  date: Date | string;
+  transactions: Array<{ clientId: ObjectId; amount: number }>;
+  orderIds: string[];
+}
+export enum OrderStatus {
+  CREATED = "CREATED",
+  PARTIALLY_PAID = "PARTIALLY_PAID",
+  PAIDINFULL = "PAIDINFULL",
 }
