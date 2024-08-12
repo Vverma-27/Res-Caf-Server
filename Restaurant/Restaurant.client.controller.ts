@@ -523,6 +523,10 @@ class RestaurantController {
           await db.collection<IOrder>("orders").findOneAndUpdate(
             { _id: new ObjectId(orderID as string) },
             {
+              $set: {
+                status: orderObj["status"],
+                remainingAmount: orderObj["remainingAmount"],
+              },
               $push: {
                 transactions: {
                   clientId: new ObjectId(
