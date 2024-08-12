@@ -124,32 +124,52 @@ class RestaurantController {
         .aggregate([
           { $match: { _id: new ObjectId(orderID) } }, // Match the order with the specific orderID
           {
+            $unwind: "$transactions",
+          },
+          { $unwind: "$orderDetails" },
+          {
             $lookup: {
               from: "clients", // Assuming the clients collection contains client information
               localField: "transactions.clientId",
               foreignField: "_id",
-              as: "clientDetails",
+              as: "client",
             },
-          },
-          {
-            $unwind: "$clientDetails", // Flatten the array of client details
           },
           {
             $lookup: {
               from: "dishes", // Assuming the dishes collection contains dish information
               localField: "orderDetails.dish",
               foreignField: "_id",
-              as: "orderDetails.dishDetails",
+              as: "dish",
             },
           },
           {
+            $set: {
+              "transactions.name": { $arrayElemAt: ["$client.name", 0] },
+              "orderDetails.dish": { $arrayElemAt: ["$dish", 0] },
+            },
+          },
+          {
+            $group: {
+              _id: "$_id",
+              remainingAmount: { $first: "$remainingAmount" },
+              date: { $first: "$date" },
+              orderDetails: { $push: "$orderDetails" },
+              transactions: { $push: "$transactions" },
+            },
+          },
+          // {
+          //   $unwind: "$orderDetails.dish",
+          // },
+          {
             $project: {
-              "transactions.clientId": 0, // Hide the original clientId field
-              "orderDetails.dish": 0, // Hide the original dish field after population
+              "transactions.clientId": 0,
+              // "client":0 // Hide the original dish field after population
             },
           },
         ])
         .toArray();
+      // console.log("🚀 ~ RestaurantController ~ order:", order);
 
       if (order.length === 0) {
         return res.status(404).send({ msg: "Order not found" });
@@ -183,7 +203,7 @@ class RestaurantController {
         res.send("Mandatory fields missing");
       } else {
         const orderObj = {
-          amount: pd.order_amount,
+          amount: pd.amount,
           status: OrderStatus.CREATED,
         };
         let insertedOrderID: ObjectId;
@@ -205,15 +225,17 @@ class RestaurantController {
           order_meta: {
             return_url:
               process.env.NODE_ENV === "production"
-                ? `https://${name}.resandcaf.online/success?orderID=${insertedOrderID.toString()}&remaining=${
-                    pd.amount === pd.amountPayable
-                  }`
-                : `http://${name}.example.localhost:3001/success?orderID=${insertedOrderID.toString()}&remaining=${
-                    pd.amount === pd.amountPayable
-                  }`,
+                ? `https://${name}.resandcaf.online/success?orderID=${
+                    pd.throughLink ? pd.orderID : insertedOrderID?.toString()
+                  }&remaining=${pd.amount - pd.amountPayable > 0}`
+                : `http://${name}.example.localhost:3001/success?orderID=${
+                    pd.throughLink ? pd.orderID : insertedOrderID?.toString()
+                  }&remaining=${pd.amount - pd.amountPayable > 0}`,
             notify_url:
               process.env.NODE_ENV === "production"
-                ? `https://${name}.api.resandcaf.online/restaurant/client/verify?orderID=${insertedOrderID.toString()}`
+                ? `https://${name}.api.resandcaf.online/restaurant/client/verify?orderID=${
+                    pd.throughLink ? pd.orderID : insertedOrderID?.toString()
+                  }`
                 : `https://www.cashfree.com/devstudio/preview/pg/webhooks/58294087`,
           },
           order_note: pd.productinfo,
@@ -442,7 +464,11 @@ class RestaurantController {
         console.log("🚀 ~ RestaurantController ~ verifyPayment= ~ data:", data);
         const orderDetails = data.order.order_tags.items.split(",").map((e) => {
           const [num, dishId, numSplitters] = e.split(":");
-          return { dish: dishId, qty: parseInt(num), numSplitters };
+          return {
+            dish: dishId,
+            qty: parseInt(num),
+            numSplitters: parseInt(numSplitters),
+          };
         });
         const orderObj = {
           amount: data.order.order_amount,
@@ -453,6 +479,18 @@ class RestaurantController {
         };
         const { restaurant, orderID, remainingAmount, throughLink } =
           data.order.order_tags;
+        const db = client.db(restaurant);
+        const existingOrder = await db.collection<IOrder>("orders").findOne({
+          _id: new ObjectId(orderID as string),
+          orderIds: data.order.order_id,
+        });
+
+        if (existingOrder) {
+          console.log("Order ID already exists. Skipping update.");
+          res.status(200).send({ message: "Order ID already processed" });
+          return;
+        }
+
         if (+remainingAmount > 0) {
           orderObj["remainingAmount"] = +remainingAmount;
           orderObj["status"] = OrderStatus.PARTIALLY_PAID;
@@ -460,7 +498,6 @@ class RestaurantController {
           orderObj["remainingAmount"] = 0;
           orderObj["status"] = OrderStatus.PAIDINFULL;
         }
-        const db = client.db(restaurant);
         if (!throughLink) {
           await db.collection<IOrder>("orders").findOneAndUpdate(
             { _id: new ObjectId(orderID as string) },
