@@ -556,10 +556,12 @@ class RestaurantController {
           {
             method: "POST",
             body: JSON.stringify({
-              split: {
-                vendor_id,
-                percentage: "90",
-              },
+              split: [
+                {
+                  vendor_id,
+                  percentage: "90",
+                },
+              ],
               disable_split: true,
             }),
             headers: {
