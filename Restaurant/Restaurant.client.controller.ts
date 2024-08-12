@@ -123,10 +123,8 @@ class RestaurantController {
         .collection("orders")
         .aggregate([
           { $match: { _id: new ObjectId(orderID) } }, // Match the order with the specific orderID
-          {
-            $unwind: "$transactions",
-          },
-          { $unwind: "$orderDetails" },
+
+          // Lookup and populate transactions
           {
             $lookup: {
               from: "clients", // Assuming the clients collection contains client information
@@ -136,38 +134,76 @@ class RestaurantController {
             },
           },
           {
+            $set: {
+              transactions: {
+                $map: {
+                  input: "$transactions",
+                  as: "trans",
+                  in: {
+                    name: {
+                      $arrayElemAt: [
+                        "$client.name",
+                        {
+                          $indexOfArray: [
+                            "$transactions.clientId",
+                            "$$trans.clientId",
+                          ],
+                        },
+                      ],
+                    },
+                    amount: "$$trans.amount",
+                  },
+                },
+              },
+            },
+          },
+
+          // Lookup and populate orderDetails
+          {
             $lookup: {
               from: "dishes", // Assuming the dishes collection contains dish information
               localField: "orderDetails.dish",
               foreignField: "_id",
-              as: "dish",
+              as: "dishes",
             },
           },
           {
             $set: {
-              "transactions.name": { $arrayElemAt: ["$client.name", 0] },
-              "orderDetails.dish": { $arrayElemAt: ["$dish", 0] },
+              orderDetails: {
+                $map: {
+                  input: "$orderDetails",
+                  as: "detail",
+                  in: {
+                    dish: {
+                      $arrayElemAt: [
+                        "$dishes",
+                        {
+                          $indexOfArray: [
+                            "$orderDetails.dish",
+                            "$$detail.dish",
+                          ],
+                        },
+                      ],
+                    },
+                    qty: "$$detail.qty",
+                    numSplitters: "$$detail.numSplitters",
+                  },
+                },
+              },
             },
           },
-          {
-            $group: {
-              _id: "$_id",
-              remainingAmount: { $first: "$remainingAmount" },
-              date: { $first: "$date" },
-              orderDetails: { $push: "$orderDetails" },
-              transactions: { $push: "$transactions" },
-            },
-          },
-          // {
-          //   $unwind: "$orderDetails.dish",
-          // },
+
+          // Project the required fields
           {
             $project: {
               "transactions.clientId": 0,
-              // "client":0 // Hide the original dish field after population
+              client: 0,
+              orderIds: 0,
+              dishes: 0, // Hiding intermediate lookup array
             },
           },
         ])
+
         .toArray();
       // console.log("🚀 ~ RestaurantController ~ order:", order);
 
