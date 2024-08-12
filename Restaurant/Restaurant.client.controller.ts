@@ -242,7 +242,7 @@ class RestaurantController {
           order_tags: {
             restaurant: name as string,
             items: pd.productinfo,
-            throughLink: pd.throughLink,
+            throughLink: `${pd.throughLink}`,
             orderID: pd.throughLink ? pd.orderID : insertedOrderID?.toString(),
             remainingAmount: `${pd.amount - pd.amountPayable}`,
           },
@@ -498,7 +498,7 @@ class RestaurantController {
           orderObj["remainingAmount"] = 0;
           orderObj["status"] = OrderStatus.PAIDINFULL;
         }
-        if (!throughLink) {
+        if (!JSON.parse(throughLink)) {
           await db.collection<IOrder>("orders").findOneAndUpdate(
             { _id: new ObjectId(orderID as string) },
             {
