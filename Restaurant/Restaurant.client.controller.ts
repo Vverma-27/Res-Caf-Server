@@ -48,36 +48,69 @@ class RestaurantController {
     this.router.post(`${this.route}/verify`, this.verifyPayment);
     this.router.post(`${this.route}/payment/failure`, this.paymentFail);
   }
-  private getDishesFromOrders = async (uid: string, name: string) => {
-    try {
-      //@ts-ignore
-      const db = client.db(name);
-      // Fetch orders with orderDetails
-      const orders = await db
-        .collection("orders")
-        .aggregate([
-          { $match: { clientId: new ObjectId(uid) } },
-          { $project: { orderDetails: 1 } },
-        ])
-        .toArray();
+  // private getDishesFromOrders = async (uid: string, name: string) => {
+  //   try {
+  //     //@ts-ignore
+  //     const db = client.db(name);
+  //     // Fetch orders with orderDetails
+  //     const orders = await db
+  //       .collection("clients")
+  //       .aggregate([
+  //         { $match: { _id: new ObjectId(uid) } },
+  //         { $project: { orders: 1 } },
+  //       ])
+  //       .toArray();
 
-      // Extract dish ObjectIDs
-      const dishObjectIds = orders.flatMap((order) =>
-        order.orderDetails.map((detail) => detail.dish)
-      );
-      const uniqueDishObjectIds = Array.from(new Set(dishObjectIds));
+  //     // Extract dish ObjectIDs
+  //     const dishObjectIds = orders.flatMap((order) =>
+  //       order.orderDetails.map((detail) => detail.dish)
+  //     );
 
-      // Fetch and return dish details
-      const dishes = await db
-        .collection("dishes")
-        .find({ _id: { $in: uniqueDishObjectIds } })
-        .toArray();
+  //     return dishes;
+  //   } catch (err) {
+  //     console.error(err);
+  //     throw new Error("Failed to get dishes from orders");
+  //   }
+  // };
+  private getTransactionsByClientId = async (
+    clientId: string,
+    name: string
+  ) => {
+    const db = client.db(name); // Replace with your actual database name
+    const ordersCollection = db.collection<IOrder>("orders");
 
-      return dishes;
-    } catch (err) {
-      console.error(err);
-      throw new Error("Failed to get dishes from orders");
-    }
+    const items = await ordersCollection
+      .aggregate([
+        {
+          $match: {
+            "transactions.clientId": new ObjectId(clientId),
+          },
+        },
+        {
+          $unwind: "$transactions",
+        },
+        {
+          $match: {
+            "transactions.clientId": new ObjectId(clientId),
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            items: { $push: "$transactions.items" },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            items: 1,
+          },
+        },
+      ])
+      .toArray();
+
+    console.log("🚀 ~ RestaurantController ~ items:", items);
+    return items.length > 0 ? items[0].items : [];
   };
 
   private getPastOrders = async (
@@ -85,15 +118,25 @@ class RestaurantController {
     res: express.Response
   ) => {
     try {
-      const { uid } = req.cookies;
+      // const { uid } = req.cookies;
+      const db = client.db(req.headers.name as string);
+      const uid = "668e911939693cfcf7a730b5";
       console.log("🚀 ~ RestaurantController ~ uid:", uid);
       // const collections = await db.collections();
       // if (collections.length <= 3)
       //   return res.status(404).send({ msg: "no restaurant found" });
-      const dishArray = await this.getDishesFromOrders(
+      const itemsArray = await this.getTransactionsByClientId(
         uid,
         req.headers.name as string
       );
+      const uniqueDishObjectIds = Array.from(new Set(itemsArray));
+
+      // Fetch and return dish details
+      const dishes = await db
+        .collection("dishes")
+        //@ts-ignore
+        .find({ _id: { $in: uniqueDishObjectIds } })
+        .toArray();
       // const orders = await db
       //   .collection("orders")
       //   .aggregate([
@@ -104,7 +147,7 @@ class RestaurantController {
       // const dishArray = orders.flatMap((order) =>
       //   order.orderDetails.map((detail) => detail.dish)
       // );
-      res.json({ orders: dishArray });
+      res.json({ orders: dishes });
     } catch (err) {
       console.log(err);
       res.status(500).send(err);
@@ -234,6 +277,7 @@ class RestaurantController {
         !pd.txnid ||
         !pd.productinfo ||
         !pd.amountPayable ||
+        !pd.transactionOrder ||
         (pd.throughLink && !pd.orderID)
       ) {
         res.send("Mandatory fields missing");
@@ -278,6 +322,7 @@ class RestaurantController {
           order_tags: {
             restaurant: name as string,
             items: pd.productinfo,
+            transactionOrder: pd.transactionOrder,
             throughLink: `${pd.throughLink}`,
             orderID: pd.throughLink ? pd.orderID : insertedOrderID?.toString(),
             remainingAmount: `${pd.amount - pd.amountPayable}`,
@@ -513,8 +558,13 @@ class RestaurantController {
           clientId: new ObjectId(`${data.customer_details.customer_id}`),
           orderDetails,
         };
-        const { restaurant, orderID, remainingAmount, throughLink } =
-          data.order.order_tags;
+        const {
+          restaurant,
+          orderID,
+          remainingAmount,
+          throughLink,
+          transactionOrder,
+        } = data.order.order_tags;
         const db = client.db(restaurant);
         const existingOrder = await db.collection<IOrder>("orders").findOne({
           _id: new ObjectId(orderID as string),
@@ -530,7 +580,7 @@ class RestaurantController {
         if (+remainingAmount > 0) {
           orderObj["remainingAmount"] = +remainingAmount;
           orderObj["status"] = OrderStatus.PARTIALLY_PAID;
-        } else if (+remainingAmount === 0) {
+        } else if (+remainingAmount <= 0) {
           orderObj["remainingAmount"] = 0;
           orderObj["status"] = OrderStatus.PAIDINFULL;
         }
@@ -550,6 +600,7 @@ class RestaurantController {
                     `${data.customer_details.customer_id}`
                   ),
                   amount: data.order.order_amount,
+                  items: transactionOrder,
                 },
                 orderIds: data.order.order_id,
               },
@@ -569,6 +620,7 @@ class RestaurantController {
                     `${data.customer_details.customer_id}`
                   ),
                   amount: data.order.order_amount,
+                  items: transactionOrder,
                 },
                 orderIds: data.order.order_id,
               },
@@ -584,7 +636,7 @@ class RestaurantController {
           await db.collection("clients").findOneAndUpdate(
             { _id: new ObjectId(`${data.customer_details.customer_id}`) },
             //@ts-ignore
-            { $push: { orders: orderID } }
+            { $push: { orders: new ObjectId(orderID as string) } }
           );
         }
         const response = await fetch(

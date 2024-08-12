@@ -33,7 +33,7 @@ export interface IOrder {
   status: OrderStatus;
   remainingAmount: number;
   date: Date | string;
-  transactions: Array<{ clientId: ObjectId; amount: number }>;
+  transactions: Array<{ clientId: ObjectId; amount: number; items: string }>;
   orderIds: string[];
 }
 export enum OrderStatus {
