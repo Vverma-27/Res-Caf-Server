@@ -279,9 +279,9 @@ class RestaurantController {
         !pd.amountPayable ||
         !pd.transactionOrder ||
         (pd.throughLink && !pd.orderID) ||
-        pd.table
+        !pd.table
       ) {
-        res.send("Mandatory fields missing");
+        res.json({ error: "Mandatory fields missing" });
       } else {
         const orderObj = {
           amount: pd.amount,
