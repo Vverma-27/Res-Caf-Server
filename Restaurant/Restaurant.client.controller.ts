@@ -715,28 +715,31 @@ class RestaurantController {
             { $push: { orders: new ObjectId(orderID as string) } }
           );
         }
-        const response = await fetch(
-          `https://sandbox.cashfree.com/pg/easy-split/orders/${data.order.order_id}/split`,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              split: [
-                {
-                  vendor_id,
-                  percentage: 90.0,
-                },
-              ],
-              disable_split: true,
-            }),
-            headers: {
-              "x-api-version": "2023-08-01",
-              "x-client-id": process.env.CASHFREE_XCLIENT_ID,
-              "x-client-secret": process.env.CASHFREE_XCLIENT_SECRET,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-        console.log("response ", response);
+        setTimeout(async () => {
+          const res = await fetch(
+            `https://sandbox.cashfree.com/pg/easy-split/orders/${data.order.order_id}/split`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                split: [
+                  {
+                    vendor_id,
+                    percentage: 90.0,
+                  },
+                ],
+                disable_split: true,
+              }),
+              headers: {
+                "x-api-version": "2023-08-01",
+                "x-client-id": process.env.CASHFREE_XCLIENT_ID,
+                "x-client-secret": process.env.CASHFREE_XCLIENT_SECRET,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+          const d = await res.json();
+          console.log("Response d:", d);
+        }, 120000);
       }
       res.status(200);
     } catch (err) {
