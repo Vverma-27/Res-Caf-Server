@@ -12,7 +12,7 @@ import authMiddleware from "../middleware/auth";
 import { MongoClient, ObjectId } from "mongodb";
 import config from "../config";
 import { client } from "../services/mongo";
-import { ICategory, IDish } from "./Restaurant.interfaces";
+import { ICategory, IDish, OrderStatus } from "./Restaurant.interfaces";
 import restaurantMiddleware from "../middleware/restaurant/admin";
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -82,6 +82,12 @@ class RestaurantController {
       this.getStatus
     );
     this.router.get(
+      `${this.route}/orders`,
+      authMiddleware,
+      restaurantMiddleware,
+      this.getOrders
+    );
+    this.router.get(
       `${this.route}/clients`,
       authMiddleware,
       restaurantMiddleware,
@@ -111,6 +117,65 @@ class RestaurantController {
     //   this.handleMenuUpload
     // );
   }
+
+  private getOrders = async (req: express.Request, res: express.Response) => {
+    const { name } = req.headers;
+    const db = client.db(name as string);
+    const orders = await db
+      .collection("orders")
+      .aggregate([
+        {
+          $unwind: "$orderDetails", // Unwind orderDetails array to process each element
+        },
+        {
+          $lookup: {
+            from: "dishes", // The collection to join with
+            localField: "orderDetails.dish", // The field from the orders collection
+            foreignField: "_id", // The field from the dishes collection
+            as: "dishInfo", // The name of the new array field to add
+          },
+        },
+        {
+          $unwind: "$dishInfo", // Unwind the dishInfo array (since it's a single match, not an array)
+        },
+        {
+          $set: {
+            "orderDetails.dish": "$dishInfo", // Replace the dish ID with the full dish object
+          },
+        },
+        {
+          $group: {
+            _id: "$_id", // Group by the original order ID (keeping each order separate)
+            orderID: { $first: "$_id" },
+            amount: { $first: "$amount" },
+            status: { $first: "$status" },
+            date: { $first: "$date" },
+            remainingAmount: { $first: "$remainingAmount" },
+            table: { $first: "$table" },
+            orderDetails: { $push: "$orderDetails" }, // Reconstruct the orderDetails array
+          },
+        },
+        {
+          $match: {
+            status: { $ne: OrderStatus.COMPLETED },
+          },
+        },
+        {
+          $project: {
+            orderID: 1, // Keep orderID field
+            amount: 1,
+            status: 1,
+            _id: 0,
+            date: 1,
+            remainingAmount: 1,
+            table: 1,
+            orderDetails: 1, // Keep orderDetails array
+          },
+        },
+      ])
+      .toArray(); // Convert the cursor to an array
+    return res.json({ orders });
+  };
 
   private uploadImageToCloudinary = async (
     buffer: Buffer,

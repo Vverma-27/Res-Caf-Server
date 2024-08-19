@@ -6,6 +6,7 @@ import restaurantMiddleware from "../middleware/restaurant/client";
 import { Cashfree } from "cashfree-pg";
 import { ObjectId } from "mongodb";
 import { IOrder, OrderStatus } from "./Restaurant.interfaces";
+import { app } from "../index";
 
 Cashfree.XClientId = process.env.CASHFREE_XCLIENT_ID;
 Cashfree.XClientSecret = process.env.CASHFREE_XCLIENT_SECRET;
@@ -118,10 +119,9 @@ class RestaurantController {
     res: express.Response
   ) => {
     try {
-      // const { uid } = req.cookies;
+      const { uid } = req.cookies;
       const db = client.db(req.headers.name as string);
-      const uid = "668e911939693cfcf7a730b5";
-      console.log("🚀 ~ RestaurantController ~ uid:", uid);
+      // const uid = "668e911939693cfcf7a730b5";
       // const collections = await db.collections();
       // if (collections.length <= 3)
       //   return res.status(404).send({ msg: "no restaurant found" });
@@ -278,13 +278,15 @@ class RestaurantController {
         !pd.productinfo ||
         !pd.amountPayable ||
         !pd.transactionOrder ||
-        (pd.throughLink && !pd.orderID)
+        (pd.throughLink && !pd.orderID) ||
+        pd.table
       ) {
         res.send("Mandatory fields missing");
       } else {
         const orderObj = {
           amount: pd.amount,
           status: OrderStatus.CREATED,
+          table: pd.table,
         };
         let insertedOrderID: ObjectId;
         if (!pd.throughLink) {
@@ -307,15 +309,19 @@ class RestaurantController {
               process.env.NODE_ENV === "production"
                 ? `https://${name}.resandcaf.online/success?orderID=${
                     pd.throughLink ? pd.orderID : insertedOrderID?.toString()
-                  }&remaining=${pd.amount - pd.amountPayable > 0}`
+                  }&remaining=${pd.amount - pd.amountPayable > 0}&table=${
+                    pd.table
+                  }`
                 : `http://${name}.example.localhost:3001/success?orderID=${
                     pd.throughLink ? pd.orderID : insertedOrderID?.toString()
-                  }&remaining=${pd.amount - pd.amountPayable > 0}`,
+                  }&remaining=${pd.amount - pd.amountPayable > 0}&table=${
+                    pd.table
+                  }`,
             notify_url:
               process.env.NODE_ENV === "production"
                 ? `https://${name}.api.resandcaf.online/restaurant/client/verify?orderID=${
                     pd.throughLink ? pd.orderID : insertedOrderID?.toString()
-                  }`
+                  }&table=${pd.table}`
                 : `https://www.cashfree.com/devstudio/preview/pg/webhooks/58294087`,
           },
           order_note: pd.productinfo,
@@ -326,6 +332,7 @@ class RestaurantController {
             throughLink: `${pd.throughLink}`,
             orderID: pd.throughLink ? pd.orderID : insertedOrderID?.toString(),
             remainingAmount: `${pd.amount - pd.amountPayable}`,
+            table: pd.table,
           },
         };
         const { data: order } = await Cashfree.PGCreateOrder(
@@ -563,6 +570,7 @@ class RestaurantController {
           orderID,
           remainingAmount,
           throughLink,
+          table,
           transactionOrder,
         } = data.order.order_tags;
         const db = client.db(restaurant);
@@ -585,7 +593,7 @@ class RestaurantController {
           orderObj["status"] = OrderStatus.PAIDINFULL;
         }
         if (!JSON.parse(throughLink)) {
-          await db.collection<IOrder>("orders").findOneAndUpdate(
+          const updatedOrder = db.collection<IOrder>("orders").findOneAndUpdate(
             { _id: new ObjectId(orderID as string) },
             {
               $set: {
@@ -604,8 +612,72 @@ class RestaurantController {
                 },
                 orderIds: data.order.order_id,
               },
-            }
+            },
+            { returnDocument: "after" }
           );
+          const aggregatedResult = db
+            .collection<IOrder>("orders")
+            .aggregate([
+              {
+                $match: { _id: new ObjectId(orderID as string) }, // Match the specific updated document
+              },
+              {
+                $unwind: "$orderDetails", // Unwind orderDetails array
+              },
+              {
+                $lookup: {
+                  from: "dishes", // Join with dishes collection
+                  localField: "orderDetails.dish",
+                  foreignField: "_id",
+                  as: "dishInfo",
+                },
+              },
+              {
+                $unwind: "$dishInfo", // Unwind dishInfo array
+              },
+              {
+                $set: {
+                  "orderDetails.dish": "$dishInfo", // Replace dish ID with full dish object
+                },
+              },
+              {
+                $group: {
+                  _id: "$_id", // Group by order ID
+                  orderID: { $first: "$_id" },
+                  amount: { $first: "$amount" },
+                  status: { $first: "$status" },
+                  date: { $first: "$date" },
+                  remainingAmount: { $first: "$remainingAmount" },
+                  table: { $first: "$table" },
+                  orderDetails: { $push: "$orderDetails" }, // Reconstruct orderDetails array
+                },
+              },
+              {
+                $match: {
+                  status: { $ne: OrderStatus.COMPLETED }, // Filter out completed orders
+                },
+              },
+              {
+                $project: {
+                  orderID: 1,
+                  amount: 1,
+                  status: 1,
+                  _id: 0,
+                  date: 1,
+                  remainingAmount: 1,
+                  table: 1,
+                  orderDetails: 1,
+                },
+              },
+            ])
+            .toArray();
+          const [updated, aggregated] = await Promise.all([
+            updatedOrder,
+            aggregatedResult,
+          ]);
+          app.io
+            .of(`admin-resandcaf-${restaurant}`)
+            .emit("new-order", aggregated[0]);
         } else {
           await db.collection<IOrder>("orders").findOneAndUpdate(
             { _id: new ObjectId(orderID as string) },
@@ -626,6 +698,10 @@ class RestaurantController {
               },
             }
           );
+          app.io.of(`admin-resandcaf-${restaurant}`).emit("order-transaction", {
+            orderID,
+            remainingAmount: orderObj["remainingAmount"],
+          });
         }
         // const result = await db.collection("orders").insertOne(orderObj);
         const { vendor_id } = await db.collection("details").findOne();

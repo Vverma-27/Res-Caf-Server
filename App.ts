@@ -27,7 +27,7 @@ interface IShareReq {
 class App {
   private app: express.Application;
   private server: any;
-  private io: Server<
+  public io: Server<
     DefaultEventsMap,
     DefaultEventsMap,
     DefaultEventsMap,
@@ -371,58 +371,118 @@ class App {
     //   // Connect the socket to the restaurant namespace
     //   // this.io.of(`/${restaurant}`).connected[socket.id] = socket;
     // });
-    const adminNamespace = this.io.of("/admin");
-    adminNamespace.use(async (socket, next) => {
-      try {
-        const query = socket.handshake.query as { [key: string]: string };
-        const { authToken } = query;
-        if (!authToken) {
-          socket.disconnect();
-          return next(new Error("No authtoken"));
-        }
-        const decodedToken = await admin.auth().verifyIdToken(authToken, true);
-        const { uid } = decodedToken;
-        const restaurant = await client
-          .db("restaurants")
-          .collection("restaurants")
-          .findOne({ uid });
-        if (restaurant) {
-          return next();
-        }
-        socket.disconnect();
-        return next(new Error("Authentication error"));
-      } catch (error) {
-        socket.disconnect();
-        return next(new Error("Internal Server error"));
-      }
-    });
-    adminNamespace.on("connection", (socket: CustomSocket) => {
-      const name = socket.handshake.query.name;
-      socket.on("availability", (e: any) => {
-        this.io.of(`/${name}`).emit("availability", e);
-      });
-    });
+    // const adminNamespace = this.io.of(`${}`);
+    // adminNamespace.use(async (socket, next) => {
+    //   try {
+    //     const query = socket.handshake.query as { [key: string]: string };
+    //     const { authToken } = query;
+    //     if (!authToken) {
+    //       socket.disconnect();
+    //       return next(new Error("No authtoken"));
+    //     }
+    //     const decodedToken = await admin.auth().verifyIdToken(authToken, true);
+    //     const { uid } = decodedToken;
+    //     const restaurant = await client
+    //       .db("restaurants")
+    //       .collection("restaurants")
+    //       .findOne({ uid });
+    //     if (restaurant) {
+    //       return next();
+    //     }
+    //     socket.disconnect();
+    //     return next(new Error("Authentication error"));
+    //   } catch (error) {
+    //     socket.disconnect();
+    //     return next(new Error("Internal Server error"));
+    //   }
+    // });
+    // adminNamespace.on("connection", (socket: CustomSocket) => {
+    //   const name = socket.handshake.query.name;
+    //   socket.on("availability", (e: any) => {
+    //     this.io.of(`/${name}`).emit("availability", e);
+    //   });
+    // });
     this.io
       .of(async (name, auth, next) => {
-        // if (name.startsWith("")) {
-        const adminDb = client.db().admin();
-        const { databases } = await adminDb.listDatabases();
+        // If the namespace starts with "admin-resandcaf-", apply specific middleware
+        if (name.startsWith("/admin-resandcaf-")) {
+          const adminNamespace = this.io.of(name);
 
-        // Check if the specified database exists
-        const databaseExists = databases.some((db) => `/${db.name}` === name);
+          adminNamespace.use(async (socket, next) => {
+            try {
+              const query = socket.handshake.query as { [key: string]: string };
+              const { authToken } = query;
 
-        if (!databaseExists) {
-          return next(new Error("Invalid Namespace"), false);
+              if (!authToken) {
+                socket.disconnect();
+                return next(new Error("No authtoken"));
+              }
+
+              const decodedToken = await admin
+                .auth()
+                .verifyIdToken(authToken, true);
+              const { uid } = decodedToken;
+              const restaurant = await client
+                .db("restaurants")
+                .collection("restaurants")
+                .findOne({ uid });
+
+              if (restaurant) {
+                return next();
+              } else {
+                socket.disconnect();
+                return next(new Error("Authentication error"));
+              }
+            } catch (error) {
+              socket.disconnect();
+              return next(new Error("Internal Server error"));
+            }
+          });
+
+          adminNamespace.on("connection", (socket: CustomSocket) => {
+            const name = socket.handshake.query.name;
+            socket.on("availability", (e: any) => {
+              this.io.of(`/${name}`).emit("availability", e);
+            });
+          });
+        } else {
+          const adminDb = client.db().admin();
+          const { databases } = await adminDb.listDatabases();
+
+          // Check if the specified database exists
+          const databaseExists = databases.some((db) => `/${db.name}` === name);
+
+          if (!databaseExists) {
+            return next(new Error("Invalid Namespace"), false);
+          }
+          next(null, true);
         }
-        next(null, true);
-        // } else {
-        //   next(null, false);
-        // }
       })
       .on("connection", (socket: CustomSocket) => {
-        // console.log("🚀 ~ App ~ this.io.of ~ socket:", socket.nsp);
         this.handleNamespaceConnection(socket, socket.nsp.name.slice(1));
       });
+
+    // this.io
+    //   .of(async (name, auth, next) => {
+    //     // if (name.startsWith("")) {
+    //     const adminDb = client.db().admin();
+    //     const { databases } = await adminDb.listDatabases();
+
+    //     // Check if the specified database exists
+    //     const databaseExists = databases.some((db) => `/${db.name}` === name);
+
+    //     if (!databaseExists) {
+    //       return next(new Error("Invalid Namespace"), false);
+    //     }
+    //     next(null, true);
+    //     // } else {
+    //     //   next(null, false);
+    //     // }
+    //   })
+    //   .on("connection", (socket: CustomSocket) => {
+    //     // console.log("🚀 ~ App ~ this.io.of ~ socket:", socket.nsp);
+    //     this.handleNamespaceConnection(socket, socket.nsp.name.slice(1));
+    //   });
     this.server.listen(this.port, () => {
       console.log(`App listening on the port ${this.port}`);
     });
