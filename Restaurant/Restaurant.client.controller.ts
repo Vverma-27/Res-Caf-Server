@@ -723,7 +723,7 @@ class RestaurantController {
               split: [
                 {
                   vendor_id,
-                  percentage: "90",
+                  percentage: 90.0,
                 },
               ],
               disable_split: true,
