@@ -87,6 +87,12 @@ class RestaurantController {
       restaurantMiddleware,
       this.getOrders
     );
+    this.router.put(
+      `${this.route}/completed/orders/:id`,
+      authMiddleware,
+      restaurantMiddleware,
+      this.setOrderCompleted
+    );
     this.router.get(
       `${this.route}/clients`,
       authMiddleware,
@@ -175,6 +181,34 @@ class RestaurantController {
       ])
       .toArray(); // Convert the cursor to an array
     return res.json({ orders });
+  };
+
+  private setOrderCompleted = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      const { id } = req.params; // Extract the id from req.params
+      const { name } = req.headers;
+      const db = client.db(name as string);
+
+      // Update the status of the order
+      const result = await db.collection("orders").findOneAndUpdate(
+        { _id: new ObjectId(id) }, // Ensure the id is an ObjectId
+        { $set: { status: OrderStatus.COMPLETED } }, // Use $set to update fields
+        { returnDocument: "after" } // Optional: return the updated document
+      );
+      if (!result) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Order not found" });
+      }
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.log("🚀 ~ RestaurantController ~ error:", error);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
   };
 
   private uploadImageToCloudinary = async (
@@ -410,6 +444,7 @@ class RestaurantController {
   private getClients = async (req: express.Request, res: express.Response) => {
     try {
       const { name } = req.headers;
+      const { page, limit } = req.query;
       //@ts-ignore
       const db = client.db(name);
       const collections = await db.collections();
@@ -426,6 +461,10 @@ class RestaurantController {
                 as: "orders",
               },
             },
+            {
+              $skip: parseInt(page as string) * parseInt(limit as string),
+            }, // Skipping documents for pagination
+            { $limit: parseInt(limit as string) },
           ])
           .toArray();
       }
