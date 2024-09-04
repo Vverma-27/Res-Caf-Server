@@ -277,6 +277,7 @@ class RestaurantController {
     const db = client.db(name as string);
     const employee = await db
       .collection("employees")
+      //@ts-ignore
       .findOne({ _id: uid }, { projection: { name: 1, email: 1 } });
     return res.json({ employee });
   };
@@ -702,6 +703,7 @@ class RestaurantController {
       const db = client.db(name);
       const employee = await db
         .collection("employees")
+        //@ts-ignore
         .updateOne({ _id: id }, { $set: { active: req.body.active } });
       return res.json({ employee });
     } catch (error) {
@@ -728,6 +730,7 @@ class RestaurantController {
         role,
         password,
         active: true,
+        //@ts-ignore
         _id: fbUser.uid,
       });
       await db
@@ -883,6 +886,7 @@ class RestaurantController {
         .db(req.body.name.toLowerCase())
         .collection("employees")
         .insertOne({
+          //@ts-ignore
           _id: req.headers.uid,
           name: req.body.personName,
           email: req.body.email,

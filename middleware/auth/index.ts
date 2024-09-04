@@ -35,6 +35,7 @@ export const roleMiddleware =
     const { name, uid } = req.headers;
     // console.log("🚀 ~ uid:", uid);
     const db = client.db(name as string);
+    //@ts-ignore
     const user = await db.collection("employees").findOne({ _id: uid });
     if (!user) return res.status(404).json({ err: "User not found" });
     const { role } = user;
