@@ -57,11 +57,11 @@ class App {
         verify: (req, res, buf) => {
           //@ts-ignore
           req.rawBody = buf;
-          console.log(
-            "🚀 ~ initializeMiddlewares ~ req.rawBody:",
-            //@ts-ignore
-            req.rawBody.toString("utf-8")
-          );
+          // console.log(
+          //   "🚀 ~ initializeMiddlewares ~ req.rawBody:",
+          //   //@ts-ignore
+          //   req.rawBody.toString("utf-8")
+          // );
         },
       })
     );
@@ -99,10 +99,10 @@ class App {
                 req.subdomains.slice(-1)[0] !== "admin" &&
                 req.subdomains.slice(-1)[0] !== "example")
             ) {
-              console.log(
-                "🚀 ~ this.app.use ~ req.subdomains:",
-                req.subdomains
-              );
+              // console.log(
+              //   "🚀 ~ this.app.use ~ req.subdomains:",
+              //   req.subdomains
+              // );
               // console.log(
               //   "🚀 ~ App ~ this.app.use ~ req.subdomains.slice(-2)[0]:",
               //   req.subdomains.slice(-1)[0] === "api"
@@ -425,7 +425,7 @@ class App {
               const restaurant = await client
                 .db("restaurants")
                 .collection("restaurants")
-                .findOne({ uid });
+                .findOne({ uids: { $in: [uid] } });
 
               if (restaurant) {
                 return next();

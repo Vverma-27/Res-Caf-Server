@@ -13,7 +13,7 @@ const restaurantMiddleware = async (
     const restaurant = await client
       .db("restaurants")
       .collection("restaurants")
-      .findOne({ uid });
+      .findOne({ uids: { $in: [uid] } });
     if (!restaurant) {
       return res.status(403).send("Unauthorized");
     }

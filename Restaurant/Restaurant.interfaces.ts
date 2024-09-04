@@ -43,3 +43,7 @@ export enum OrderStatus {
   COMPLETED = "COMPLETED",
   CANCELLED = "CANCELLED",
 }
+export enum ROLES {
+  ADMIN = "ADMIN",
+  EMPLOYEE = "EMPLOYEE",
+}

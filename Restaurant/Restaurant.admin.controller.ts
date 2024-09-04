@@ -8,11 +8,11 @@ import cloudinary from "cloudinary";
 import fs from "fs";
 import path from "path";
 import Tesseract, { createWorker } from "tesseract.js";
-import authMiddleware from "../middleware/auth";
+import authMiddleware, { roleMiddleware } from "../middleware/auth";
 import { MongoClient, ObjectId } from "mongodb";
 import config from "../config";
 import { client } from "../services/mongo";
-import { ICategory, IDish, OrderStatus } from "./Restaurant.interfaces";
+import { ICategory, IDish, OrderStatus, ROLES } from "./Restaurant.interfaces";
 import restaurantMiddleware from "../middleware/restaurant/admin";
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -23,6 +23,7 @@ const upload = multer({
   },
 });
 import { Cashfree, KycDetails } from "cashfree-pg";
+import admin from "firebase-admin";
 
 Cashfree.XClientId = process.env.CASHFREE_XCLIENT_ID;
 Cashfree.XClientSecret = process.env.CASHFREE_XCLIENT_SECRET;
@@ -48,6 +49,7 @@ class RestaurantController {
       `${this.route}/menu`,
       authMiddleware,
       restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
       upload.array("images", 30),
       this.addMenu
     );
@@ -55,18 +57,21 @@ class RestaurantController {
       `${this.route}/details`,
       authMiddleware,
       restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
       this.addDetails
     );
     this.router.delete(
       `${this.route}/category/:id`,
       authMiddleware,
       restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
       this.deleteCategory
     );
     this.router.delete(
       `${this.route}/dish/:catId/:dishId`,
       authMiddleware,
       restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
       this.deleteDish
     );
     this.router.put(
@@ -79,6 +84,7 @@ class RestaurantController {
       `${this.route}/status`,
       authMiddleware,
       restaurantMiddleware,
+      roleMiddleware(ROLES.EMPLOYEE),
       this.getStatus
     );
     this.router.get(
@@ -94,11 +100,89 @@ class RestaurantController {
       this.setOrderCompleted
     );
     this.router.get(
+      `${this.route}/orders/total`,
+      authMiddleware,
+      restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
+      this.getNumOrders
+    );
+    this.router.get(
+      `${this.route}/orders/dishes`,
+      authMiddleware,
+      restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
+      this.getDishesByFrequency
+    );
+    this.router.get(
+      `${this.route}/orders/percentages/:type`,
+      authMiddleware,
+      restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
+      this.getPercentagesOfType
+    );
+    this.router.get(
+      `${this.route}/sales/avg`,
+      authMiddleware,
+      restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
+      this.getAverageSales
+    );
+    this.router.get(
+      `${this.route}/stats/:timespan`,
+      authMiddleware,
+      restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
+      this.getStatsByTimespan
+    );
+    this.router.get(
       `${this.route}/clients`,
       authMiddleware,
       restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
       this.getClients
     );
+    this.router.get(
+      `${this.route}/clients/total`,
+      authMiddleware,
+      restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
+      this.getNumClients
+    );
+    this.router.get(
+      `${this.route}/employees`,
+      authMiddleware,
+      restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
+      this.getEmployees
+    );
+    this.router.post(
+      `${this.route}/employees`,
+      authMiddleware,
+      restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
+      this.createEmployee
+    );
+    this.router.patch(
+      `${this.route}/employees/disable/:id`,
+      authMiddleware,
+      restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
+      this.toggleIsActiveEmployee
+    );
+    this.router.get(
+      `${this.route}/employee`,
+      authMiddleware,
+      restaurantMiddleware,
+      roleMiddleware(ROLES.EMPLOYEE),
+      this.getCurrentEmployee
+    );
+    // this.router.put(
+    //   `${this.route}/employees/:id`,
+    //   authMiddleware,
+    //   restaurantMiddleware,
+    //   roleMiddleware(ROLES.ADMIN),
+    //   this.updateEmployee
+    // );
     // this.router.put(
     //   `${this.route}/menu`,
     //   upload.array("images", 20),
@@ -108,12 +192,14 @@ class RestaurantController {
       `${this.route}/bank`,
       authMiddleware,
       restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
       this.createVendor
     );
     this.router.get(
       `${this.route}/bank`,
       authMiddleware,
       restaurantMiddleware,
+      roleMiddleware(ROLES.ADMIN),
       this.getVendor
     );
     this.router.post(`${this.route}/verification`, this.handleWebhook);
@@ -181,6 +267,336 @@ class RestaurantController {
       ])
       .toArray(); // Convert the cursor to an array
     return res.json({ orders });
+  };
+
+  private getCurrentEmployee = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    const { name, uid } = req.headers;
+    const db = client.db(name as string);
+    const employee = await db
+      .collection("employees")
+      .findOne({ _id: uid }, { projection: { name: 1, email: 1 } });
+    return res.json({ employee });
+  };
+
+  private getPercentagesOfType = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    const { name } = req.headers;
+    const { type } = req.params;
+    const db = client.db(name as string);
+
+    // Determine the field to group by based on the type parameter
+    let groupByField: any;
+    let nameField: any;
+
+    if (type === "dish") {
+      groupByField = "$orderDetails.dish";
+      nameField = "$dishInfo.name";
+    } else if (type === "category") {
+      groupByField = "$dishInfo.category";
+      nameField = "$dishInfo.category";
+    } else if (type === "veg") {
+      groupByField = "$dishInfo.veg";
+      nameField = "$dishInfo.veg";
+    } else {
+      return res.status(400).json({ error: "Invalid type parameter" });
+    }
+
+    const result = await db
+      .collection("orders")
+      .aggregate([
+        // Unwind the orderDetails array to process each dish individually
+        {
+          $unwind: "$orderDetails",
+        },
+        // Lookup to get the full dish information
+        {
+          $lookup: {
+            from: "dishes",
+            localField: "orderDetails.dish",
+            foreignField: "_id",
+            as: "dishInfo",
+          },
+        },
+        {
+          $unwind: "$dishInfo",
+        },
+        // Group by the relevant field based on the type
+        {
+          $group: {
+            _id: {
+              typeField: groupByField,
+              name: nameField, // Keep the name field in the group key
+            },
+            count: { $sum: "$orderDetails.qty" },
+          },
+        },
+        // Calculate the total number of dishes ordered
+        {
+          $group: {
+            _id: null,
+            totalDishes: { $sum: "$count" },
+            items: {
+              $push: {
+                name: "$_id.name", // Extract the name from the previous group key
+                count: "$count",
+                typeField: "$_id.typeField",
+              },
+            },
+          },
+        },
+        {
+          $unwind: "$items",
+        },
+        // Calculate the percentage for each type
+        {
+          $project: {
+            label: "$items.name",
+            value: "$items.count",
+          },
+        },
+        // Sort by percentage in descending order
+        {
+          $sort: { value: -1 },
+        },
+      ])
+      .toArray();
+
+    return res.json({ result });
+  };
+
+  private getDishesByFrequency = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      const { name } = req.headers;
+      const db = client.db(name as string);
+
+      // Determine the date range based on the timespan
+
+      // Define the aggregation pipeline
+      const aggregationPipeline = [
+        // Unwind the orderDetails array to process each dish individually
+        {
+          $unwind: "$orderDetails",
+        },
+        // Group by the dish ID to count how many times each dish appears in orders
+        {
+          $group: {
+            _id: "$orderDetails.dish",
+            count: { $sum: 1 },
+          },
+        },
+        // Sort by count in descending order to get the most frequent dishes
+        {
+          $sort: { count: -1 },
+        },
+        // Group top 5 dishes and remaining ones into 'Others'
+        {
+          $facet: {
+            topDishes: [{ $limit: 5 }],
+            others: [
+              { $skip: 5 },
+              {
+                $group: {
+                  _id: "Others",
+                  count: { $sum: "$count" },
+                },
+              },
+            ],
+          },
+        },
+        // Merge top dishes and others into a single array
+        {
+          $project: {
+            data: { $concatArrays: ["$topDishes", "$others"] },
+          },
+        },
+        // Unwind the data array to convert it into documents
+        {
+          $unwind: "$data",
+        },
+        // Replace _id field with dish name (for top dishes) or "Others"
+        {
+          $lookup: {
+            from: "dishes",
+            localField: "data._id",
+            foreignField: "_id",
+            as: "dishInfo",
+          },
+        },
+        {
+          $unwind: {
+            path: "$dishInfo",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $project: {
+            label: {
+              $ifNull: ["$dishInfo.name", "Others"],
+            },
+            value: "$data.count",
+          },
+        },
+      ];
+
+      // Execute the aggregation pipeline
+      const aggregationResult = await db
+        .collection("orders")
+        .aggregate(aggregationPipeline)
+        .toArray();
+      console.log(
+        "🚀 ~ RestaurantController ~ aggregationResult:",
+        aggregationResult
+      );
+
+      // Handle cases with no orders or no dishes
+      if (aggregationResult.length === 0) {
+        return res.json({ result: [] });
+      }
+
+      return res.json({ result: aggregationResult });
+    } catch (error) {
+      console.error("Aggregation Error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  };
+
+  private getStatsByTimespan = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    const { name } = req.headers;
+    const { timespan } = req.params;
+    const db = client.db(name as string);
+
+    // Determine the date range and group by expression based on the timespan
+    let groupByFormat: string;
+    let componentsCount: number;
+
+    const currentDate = new Date();
+    let startDate: Date;
+
+    if (timespan === "weekly") {
+      startDate = new Date(currentDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+      groupByFormat = "%Y-%m-%d"; // Group by day
+      componentsCount = 7;
+    } else if (timespan === "monthly") {
+      startDate = new Date(currentDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+      groupByFormat = "%Y-%m-%d"; // Group by day
+      componentsCount = 30;
+    } else if (timespan === "yearly") {
+      startDate = new Date(currentDate.getTime() - 365 * 24 * 60 * 60 * 1000);
+      groupByFormat = "%Y-%m"; // Group by month
+      componentsCount = 12;
+    } else {
+      return res.status(400).json({ error: "Invalid timespan" });
+    }
+
+    const result = await db
+      .collection("orders")
+      .aggregate([
+        {
+          $addFields: {
+            // Convert string dates to Date objects
+            dateObject: {
+              $dateFromString: {
+                dateString: "$date",
+                format: "%Y-%m-%dT%H:%M:%S%z", // Adjust format as per your date string format
+              },
+            },
+          },
+        },
+        {
+          $match: {
+            dateObject: { $gte: startDate }, // Filter orders by the start date
+          },
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: { format: groupByFormat, date: "$dateObject" }, // Group by the determined format
+            },
+            total: { $sum: { $toDouble: "$amount" } }, // Sum the amounts for each group
+            count: { $sum: 1 }, // Count the number of orders in each group
+          },
+        },
+        {
+          $sort: { _id: 1 }, // Sort by the grouped field (date)
+        },
+      ])
+      .toArray();
+
+    // Prepare the components array
+    const components = new Array(componentsCount).fill(0);
+    const numOrders = new Array(componentsCount).fill(0);
+
+    result.forEach((item) => {
+      const index =
+        timespan === "yearly"
+          ? new Date(item._id + "-01").getMonth() // Extract month index for yearly
+          : new Date(item._id).getDate() - 1; // Extract day index for weekly/monthly
+
+      components[index] = item.total;
+      numOrders[index] = item.count;
+    });
+
+    // Calculate the total sales
+    const total = result.reduce((acc, curr) => acc + curr.total, 0);
+
+    return res.json({ total, components, numOrders });
+  };
+
+  private getAverageSales = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    const { name } = req.headers;
+    const db = client.db(name as string);
+    const result = await db
+      .collection("orders")
+      .aggregate([
+        {
+          $group: {
+            _id: null, // Group all documents together
+            average: { $avg: { $toDouble: "$amount" } }, // Convert string to double and then calculate the average
+          },
+        },
+      ])
+      .toArray();
+
+    // Check if result is not empty and return the average, or handle the case where no orders exist
+    const average = result.length > 0 ? result[0].average : 0;
+
+    return res.json({ average });
+  };
+
+  private getNumClients = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    const { name } = req.headers;
+    const db = client.db(name as string);
+    const total = await db.collection("clients").countDocuments();
+    return res.json({ total });
+  };
+
+  private getNumOrders = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    const { name } = req.headers;
+    const db = client.db(name as string);
+    const total = await db
+      .collection("orders")
+      .countDocuments({ status: OrderStatus.COMPLETED });
+    return res.json({ total });
   };
 
   private setOrderCompleted = async (
@@ -253,6 +669,75 @@ class RestaurantController {
     //   webhookSignature,
     //   webhookSecret
     // );
+  };
+  private getEmployees = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      const { name } = req.headers;
+      //@ts-ignore
+      const db = client.db(name);
+      const { page, limit } = req.query;
+      const employees = await db
+        .collection("employees")
+        .find({ role: { $ne: ROLES.ADMIN } }) // Filter out documents where role is "ADMIN"
+        .skip(parseInt(page as string) * parseInt(limit as string)) // Skip documents for pagination
+        .limit(parseInt(limit as string)) // Limit the number of documents returned
+        .toArray(); // Convert the result to an array (optional, depending on how you want to handle the data)
+      return res.json({ employees });
+    } catch (error) {
+      console.log(error);
+      res.status(500).send(error);
+    }
+  };
+  private toggleIsActiveEmployee = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      const { name } = req.headers;
+      const { id } = req.params;
+      //@ts-ignore
+      const db = client.db(name);
+      const employee = await db
+        .collection("employees")
+        .updateOne({ _id: id }, { $set: { active: req.body.active } });
+      return res.json({ employee });
+    } catch (error) {
+      console.log(error);
+      res.status(500).send(error);
+    }
+  };
+  private createEmployee = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      const { name } = req.headers;
+      const { name: empName, email, role, password } = req.body;
+      const fbUser = await admin.auth().createUser({
+        email,
+        password,
+      });
+      //@ts-ignore
+      const db = client.db(name);
+      const employee = await db.collection("employees").insertOne({
+        name: empName,
+        email,
+        role,
+        password,
+        active: true,
+        _id: fbUser.uid,
+      });
+      await db
+        .collection("restaurant")
+        .findOneAndUpdate({ name }, { uids: { $push: fbUser.uid } });
+      return res.json({ employee });
+    } catch (error) {
+      console.log(error);
+      res.status(500).send(error);
+    }
   };
   private createVendor = async (
     req: express.Request,
@@ -349,6 +834,8 @@ class RestaurantController {
       //@ts-ignore
       const db = client.db(name);
       const details = await db.collection("details").findOne();
+      if (!details.vendor_id)
+        return res.json({ response: "No vendor_id found", code: 404 });
       const data = await fetch(
         `https://sandbox.cashfree.com/pg/easy-split/vendors/${details.vendor_id}`,
         {
@@ -364,7 +851,7 @@ class RestaurantController {
       console.log("🚀 ~ RestaurantController ~ data:", data);
       const response = await data.json();
       console.log("🚀 ~ RestaurantController ~ response:", response);
-      res.json({ response: response });
+      res.json({ response: response, code: 200 });
     } catch (error) {
       console.log("🚀 ~ RestaurantController ~ error:", error);
     }
@@ -388,7 +875,27 @@ class RestaurantController {
       await client
         .db("restaurants")
         .collection("restaurants")
-        .insertOne({ uid: req.headers.uid, name: req.body.name });
+        .insertOne({
+          uids: [req.headers.uid],
+          name: req.body.name,
+        });
+      await client
+        .db(req.body.name.toLowerCase())
+        .collection("employees")
+        .insertOne({
+          _id: req.headers.uid,
+          name: req.body.personName,
+          email: req.body.email,
+          role: ROLES.ADMIN,
+          active: true,
+        });
+      await client
+        .db(req.body.name.toLowerCase())
+        .collection("details")
+        .insertOne({
+          contactName: req.body.personName,
+          email: req.body.email,
+        });
       res.json({ status: 1 });
     } catch (err) {
       console.log(err);
@@ -430,10 +937,12 @@ class RestaurantController {
         };
         return acc;
       }, {});
+      console.log(req.headers.role);
       res.json({
-        status: collections.length === 1 ? 1 : collections.length === 3 ? 2 : 3,
+        status: collections.length === 2 ? 1 : collections.length === 4 ? 2 : 3,
         menu,
         details,
+        role: req.headers.role,
       });
     } catch (err) {
       console.log(err);
@@ -462,8 +971,72 @@ class RestaurantController {
               },
             },
             {
+              $unwind: "$orders",
+            },
+            {
+              $match: {
+                "orders.status": { $eq: OrderStatus.COMPLETED },
+              },
+            },
+            {
+              $unwind: "$orders.orderDetails",
+            },
+            {
+              $lookup: {
+                from: "dishes",
+                localField: "orders.orderDetails.dish",
+                foreignField: "_id",
+                as: "dishDetails",
+              },
+            },
+            {
+              $unwind: "$dishDetails",
+            },
+            {
+              $group: {
+                _id: {
+                  clientId: "$_id",
+                  dishId: "$orders.orderDetails.dish",
+                },
+                clientName: { $first: "$name" },
+                clientEmail: { $first: "$email" },
+                clientNumber: { $first: "$number" },
+                dishName: { $first: "$dishDetails.name" },
+                timesOrdered: { $sum: "$orders.orderDetails.qty" },
+                orderAmounts: { $first: { $toDouble: "$orders.amount" } }, // Capture the order amount
+              },
+            },
+            {
+              $group: {
+                _id: "$_id.clientId",
+                clientName: { $first: "$clientName" },
+                clientEmail: { $first: "$clientEmail" },
+                clientNumber: { $first: "$clientNumber" },
+                amountSpent: { $sum: "$orderAmounts" }, // Sum the order amounts for the client
+                dishes: {
+                  $push: {
+                    dishName: "$dishName",
+                    timesOrdered: "$timesOrdered",
+                  },
+                },
+              },
+            },
+            {
+              $project: {
+                clientId: "$_id",
+                clientEmail: 1,
+                clientNumber: 1,
+                clientName: 1,
+                amountSpent: 1,
+                dishes: 1,
+              },
+            },
+            {
+              $sort: { clientId: 1 },
+            },
+            {
               $skip: parseInt(page as string) * parseInt(limit as string),
-            }, // Skipping documents for pagination
+            },
             { $limit: parseInt(limit as string) },
           ])
           .toArray();
@@ -482,24 +1055,25 @@ class RestaurantController {
       const { name } = req.headers;
       if (
         !req.body.name ||
-        !req.body.email ||
-        !req.body.contactName ||
         !req.body.number ||
         !req.body.address ||
-        name !== req.body.name
+        (name as string).toLowerCase() !== req.body.name.toLowerCase()
       ) {
         return res.status(400).send({ msg: "incorrect fields" });
       }
       //@ts-ignore
       const db = client.db(name);
       console.log("🚀 ~ RestaurantController ~ addDetails= ~ db:", db);
-      await db.collection("details").insertOne({
-        name: req.body.name,
-        email: req.body.email,
-        contactName: req.body.contactName,
-        number: req.body.number,
-        address: req.body.address,
-      });
+      await db.collection("details").findOneAndUpdate(
+        {},
+        {
+          $set: {
+            name: req.body.name,
+            number: req.body.number,
+            address: req.body.address,
+          },
+        }
+      );
       await db.createCollection("categories");
       await db.createCollection("dishes");
       res.json({ status: 2 });
@@ -683,12 +1257,15 @@ class RestaurantController {
             );
             await dishesCollection.updateOne(
               { _id: existingDish._id },
-              { $set: dish }
+              { $set: { ...dish, category: categoryName } }
             );
             return existingDish._id;
           } else if (!existingDish) {
             // Insert new dish
-            const { insertedId } = await dishesCollection.insertOne(dish);
+            const { insertedId } = await dishesCollection.insertOne({
+              ...dish,
+              category: categoryName,
+            });
             return insertedId;
           } else {
             // Skip update if dish exists and hasn't changed
