@@ -357,6 +357,7 @@ class RestaurantController {
       console.log("🚀 ~ RestaurantController ~ name:", name);
       //@ts-ignore
       const db = client.db(name);
+      const { name: restaurantName } = await db.collection("details").findOne();
       // const collections = await db.collections();
       // if (collections.length <= 3)
       //   return res.status(404).send({ msg: "no restaurant found" });
@@ -390,7 +391,7 @@ class RestaurantController {
       //     sameSite: "none",
       //     // sameSite: "strict",
       //   });
-      res.json({ menu, name });
+      res.json({ menu, name: restaurantName });
     } catch (err) {
       console.log(err);
       res.status(500).send(err);
