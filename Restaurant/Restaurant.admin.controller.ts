@@ -1056,7 +1056,7 @@ class RestaurantController {
         !req.body.name ||
         !req.body.number ||
         !req.body.address ||
-        restaurantName.toLowerCase() !== req.body.name.toLowerCase()
+        (restaurantName as string).toLowerCase() !== req.body.name.toLowerCase()
       ) {
         return res.status(400).send({ msg: "incorrect fields" });
       }
