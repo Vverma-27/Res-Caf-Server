@@ -83,11 +83,6 @@ class RestaurantController {
     const items = await ordersCollection
       .aggregate([
         {
-          $match: {
-            "transactions.clientId": new ObjectId(clientId),
-          },
-        },
-        {
           $unwind: "$transactions",
         },
         {
@@ -120,6 +115,7 @@ class RestaurantController {
   ) => {
     try {
       const { uid } = req.cookies;
+      console.log("🚀 ~ RestaurantController ~ uid:", uid);
       const db = client.db(req.headers.name as string);
       // const uid = "668e911939693cfcf7a730b5";
       // const collections = await db.collections();
@@ -452,19 +448,19 @@ class RestaurantController {
 
       let user;
       const uid = req.cookies.uid;
-      console.log("🚀 ~ RestaurantController ~ createClient= ~ uid:", uid);
+      // console.log("🚀 ~ RestaurantController ~ createClient= ~ uid:", uid);
 
-      if (uid) {
-        // Check if user exists by uid
-        user = await db.collection("clients").findOne({ _id: uid });
-      }
+      // if (uid) {
+      //   // Check if user exists by uid
+      //   user = await db.collection("clients").findOne({ _id: uid });
+      // }
 
-      if (!user) {
-        // Check if user exists by number or email
-        user = await db
-          .collection("clients")
-          .findOne({ $or: [{ email }, { number }] });
-      }
+      // if (!user) {
+      // Check if user exists by number or email
+      user = await db
+        .collection("clients")
+        .findOne({ $or: [{ email }, { number }] });
+      // }
 
       if (user) {
         // Update user details if changed
@@ -487,7 +483,7 @@ class RestaurantController {
         if (!uid) {
           console.log("setting uid in cookie");
           res.cookie("uid", user._id.toString(), {
-            maxAge: 9999999,
+            expires: new Date(Date.now() + 31536000000),
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
             sameSite: "strict",
@@ -508,7 +504,7 @@ class RestaurantController {
       );
 
       res.cookie("uid", insertRes.insertedId.toString(), {
-        maxAge: 9999999,
+        expires: new Date(Date.now() + 31536000000),
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "strict",

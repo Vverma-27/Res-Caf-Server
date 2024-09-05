@@ -397,36 +397,15 @@ class RestaurantController {
         {
           $sort: { count: -1 },
         },
-        // Group top 5 dishes and remaining ones into 'Others'
+        // Limit to the top 5 dishes
         {
-          $facet: {
-            topDishes: [{ $limit: 5 }],
-            others: [
-              { $skip: 5 },
-              {
-                $group: {
-                  _id: "Others",
-                  count: { $sum: "$count" },
-                },
-              },
-            ],
-          },
+          $limit: 5,
         },
-        // Merge top dishes and others into a single array
-        {
-          $project: {
-            data: { $concatArrays: ["$topDishes", "$others"] },
-          },
-        },
-        // Unwind the data array to convert it into documents
-        {
-          $unwind: "$data",
-        },
-        // Replace _id field with dish name (for top dishes) or "Others"
+        // Lookup the dish name from the dishes collection
         {
           $lookup: {
             from: "dishes",
-            localField: "data._id",
+            localField: "_id",
             foreignField: "_id",
             as: "dishInfo",
           },
@@ -437,12 +416,11 @@ class RestaurantController {
             preserveNullAndEmptyArrays: true,
           },
         },
+        // Project the label as dish name and value as the count
         {
           $project: {
-            label: {
-              $ifNull: ["$dishInfo.name", "Others"],
-            },
-            value: "$data.count",
+            label: "$dishInfo.name",
+            value: "$count",
           },
         },
       ];
@@ -483,19 +461,33 @@ class RestaurantController {
 
     const currentDate = new Date();
     let startDate: Date;
+    let endDate: Date;
 
     if (timespan === "weekly") {
-      startDate = new Date(currentDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+      startDate = new Date(currentDate.getTime() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+      endDate = currentDate; // End at current time
       groupByFormat = "%Y-%m-%d"; // Group by day
       componentsCount = 7;
     } else if (timespan === "monthly") {
-      startDate = new Date(currentDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+      startDate = new Date(currentDate.getTime() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+      endDate = currentDate; // End at current time
       groupByFormat = "%Y-%m-%d"; // Group by day
       componentsCount = 30;
     } else if (timespan === "yearly") {
-      startDate = new Date(currentDate.getTime() - 365 * 24 * 60 * 60 * 1000);
+      // Start one year ago from the current date
+      startDate = new Date(
+        currentDate.getFullYear() - 1,
+        currentDate.getMonth() + 1, // Month incremented for proper month indexing
+        1
+      );
+      // End at the last day of the current month
+      endDate = new Date(
+        currentDate.getFullYear(),
+        currentDate.getMonth() + 1,
+        0
+      );
       groupByFormat = "%Y-%m"; // Group by month
-      componentsCount = 12;
+      componentsCount = 12; // 12 months in a year
     } else {
       return res.status(400).json({ error: "Invalid timespan" });
     }
@@ -516,7 +508,10 @@ class RestaurantController {
         },
         {
           $match: {
-            dateObject: { $gte: startDate }, // Filter orders by the start date
+            dateObject: {
+              $gte: startDate,
+              $lte: endDate, // Match dates up to the end of the specified range
+            },
           },
         },
         {
@@ -539,13 +534,27 @@ class RestaurantController {
     const numOrders = new Array(componentsCount).fill(0);
 
     result.forEach((item) => {
-      const index =
-        timespan === "yearly"
-          ? new Date(item._id + "-01").getMonth() // Extract month index for yearly
-          : new Date(item._id).getDate() - 1; // Extract day index for weekly/monthly
+      let index: number;
 
-      components[index] = item.total;
-      numOrders[index] = item.count;
+      if (timespan === "yearly") {
+        // Use both year and month to calculate the index (0 for January, 11 for current month)
+        const itemDate = new Date(item._id + "-01"); // Adding day `01` to ensure valid date
+        const itemMonth = itemDate.getMonth(); // Get the month from the order date
+
+        // Calculate relative index: shift months so that the current month is at index 11
+        const currentMonth = currentDate.getMonth();
+        index = 11 - ((itemMonth - currentMonth + 12) % 12); // Ensure the current month is index 11
+      } else {
+        // For weekly and monthly, calculate the difference in days for indexing
+        const itemDate = new Date(item._id);
+        const diffInTime = itemDate.getTime() - startDate.getTime();
+        index = Math.floor(diffInTime / (1000 * 60 * 60 * 24)); // Difference in days
+      }
+
+      if (index >= 0 && index < componentsCount) {
+        components[index] = item.total;
+        numOrders[index] = item.count;
+      }
     });
 
     // Calculate the total sales
@@ -573,7 +582,7 @@ class RestaurantController {
       .toArray();
 
     // Check if result is not empty and return the average, or handle the case where no orders exist
-    const average = result.length > 0 ? result[0].average : 0;
+    const average = result.length > 0 ? Math.round(result[0].average) : 0;
 
     return res.json({ average });
   };
