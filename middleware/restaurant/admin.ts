@@ -17,7 +17,8 @@ const restaurantMiddleware = async (
     if (!restaurant) {
       return res.status(403).send("Unauthorized");
     }
-    req.headers.name = restaurant.name.toLowerCase();
+    req.headers.name = restaurant.name.toLowerCase().replace(/[^a-z]/g, "");
+    req.headers.restaurantName = restaurant.name.toLowerCase();
     next();
   } catch (e) {
     console.error(e);

@@ -862,7 +862,7 @@ class RestaurantController {
   private createDatabase = async (databaseName: string) => {
     try {
       // Connect to MongoDB Atlas
-      await client.db(databaseName.toLowerCase()).createCollection("details");
+      await client.db(databaseName).createCollection("details");
 
       console.log(`Database '${databaseName}' created successfully`);
     } catch (error) {
@@ -874,7 +874,8 @@ class RestaurantController {
     res: express.Response
   ) => {
     try {
-      await this.createDatabase(req.body.name);
+      const dbName = req.body.name.toLowerCase().replace(/[^a-z]/g, "");
+      await this.createDatabase(dbName);
       await client
         .db("restaurants")
         .collection("restaurants")
@@ -882,24 +883,18 @@ class RestaurantController {
           uids: [req.headers.uid],
           name: req.body.name,
         });
-      await client
-        .db(req.body.name.toLowerCase())
-        .collection("employees")
-        .insertOne({
-          //@ts-ignore
-          _id: req.headers.uid,
-          name: req.body.personName,
-          email: req.body.email,
-          role: ROLES.ADMIN,
-          active: true,
-        });
-      await client
-        .db(req.body.name.toLowerCase())
-        .collection("details")
-        .insertOne({
-          contactName: req.body.personName,
-          email: req.body.email,
-        });
+      await client.db(dbName).collection("employees").insertOne({
+        //@ts-ignore
+        _id: req.headers.uid,
+        name: req.body.personName,
+        email: req.body.email,
+        role: ROLES.ADMIN,
+        active: true,
+      });
+      await client.db(dbName).collection("details").insertOne({
+        contactName: req.body.personName,
+        email: req.body.email,
+      });
       res.json({ status: 1 });
     } catch (err) {
       console.log(err);
@@ -1056,17 +1051,17 @@ class RestaurantController {
 
   private addDetails = async (req: express.Request, res: express.Response) => {
     try {
-      const { name } = req.headers;
+      const { name: dbName, restaurantName } = req.headers;
       if (
         !req.body.name ||
         !req.body.number ||
         !req.body.address ||
-        (name as string).toLowerCase() !== req.body.name.toLowerCase()
+        restaurantName.toLowerCase() !== req.body.name.toLowerCase()
       ) {
         return res.status(400).send({ msg: "incorrect fields" });
       }
       //@ts-ignore
-      const db = client.db(name);
+      const db = client.db(dbName);
       console.log("🚀 ~ RestaurantController ~ addDetails= ~ db:", db);
       await db.collection("details").findOneAndUpdate(
         {},
