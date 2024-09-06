@@ -596,7 +596,7 @@ class RestaurantController {
         const existingOrder = await db.collection<IOrder>("orders").findOne({
           _id: new ObjectId(orderID as string),
         });
-        if (existingOrder.orderIds.includes(data.order.order_id)) {
+        if (existingOrder?.orderIds?.includes(data.order.order_id)) {
           console.log("Order ID already exists. Skipping update.");
           res.status(200).send({ message: "Order ID already processed" });
           return;
