@@ -126,8 +126,8 @@ class RestaurantController {
       .toArray();
 
     // Step 3: Process the items string to extract unique dish ObjectIds
-    console.log("🚀 ~ RestaurantController ~ items:", items);
-    const dishIds = items
+    console.log("🚀 ~ RestaurantController ~ items1:", items);
+    const dishIds = items[0].items
       .flatMap((dishString) => dishString.split(",")) // Split the comma-separated string
       .map((dishId) => dishId.trim()); // Remove any extra whitespace
     console.log("🚀 ~ RestaurantController ~ dishIds:", dishIds);
