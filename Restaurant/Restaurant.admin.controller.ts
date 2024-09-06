@@ -986,7 +986,6 @@ class RestaurantController {
                 "orders.status": { $eq: OrderStatus.COMPLETED },
               },
             },
-            // Group by order ID first to ensure each order amount is only counted once
             {
               $group: {
                 _id: "$_id",
@@ -997,6 +996,7 @@ class RestaurantController {
                 orders: { $push: "$orders" },
               },
             },
+            { $unwind: "$orders" },
             {
               $unwind: "$orders.orderDetails",
             },
@@ -1021,7 +1021,8 @@ class RestaurantController {
                 clientEmail: { $first: "$clientEmail" },
                 clientNumber: { $first: "$clientNumber" },
                 dishName: { $first: "$dishDetails.name" },
-                timesOrdered: { $sum: "$orders.orderDetails.qty" },
+                totalOrderAmount: { $first: "$totalOrderAmount" }, // Sum once per order
+                timesOrdered: { $sum: "$orders.orderDetails.qty" }, // Capture the order amount
               },
             },
             {
@@ -1030,7 +1031,7 @@ class RestaurantController {
                 clientName: { $first: "$clientName" },
                 clientEmail: { $first: "$clientEmail" },
                 clientNumber: { $first: "$clientNumber" },
-                amountSpent: { $first: "$totalOrderAmount" }, // Use the summed order amounts
+                amountSpent: { $first: "$totalOrderAmount" }, // Sum the order amounts for the client
                 dishes: {
                   $push: {
                     dishName: "$dishName",
@@ -1046,6 +1047,8 @@ class RestaurantController {
                 clientNumber: 1,
                 clientName: 1,
                 amountSpent: 1,
+                // totalOrderAmount: 1,
+                // orders: 1,
                 dishes: 1,
               },
             },
@@ -1067,7 +1070,6 @@ class RestaurantController {
       res.status(500).send(err);
     }
   };
-
   private addDetails = async (req: express.Request, res: express.Response) => {
     try {
       const { name: dbName, restaurantName } = req.headers;

@@ -595,8 +595,9 @@ class RestaurantController {
         const db = client.db(restaurant);
         const existingOrder = await db.collection<IOrder>("orders").findOne({
           _id: new ObjectId(orderID as string),
+          orderIds: data.order.order_id,
         });
-        if (existingOrder?.orderIds?.includes(data.order.order_id)) {
+        if (existingOrder) {
           console.log("Order ID already exists. Skipping update.");
           res.status(200).send({ message: "Order ID already processed" });
           return;
@@ -733,7 +734,7 @@ class RestaurantController {
           );
         }
         console.log(
-          "🚀 ~ RestaurantController ~ verifyPayment= ~ result: finished req"
+          "🚀 ~ RestaurantController ~ verifyPayment= ~ result: finished"
         );
         setTimeout(async () => {
           const res = await fetch(
