@@ -155,9 +155,9 @@ class RestaurantController {
         uniqueDishObjectIds
       );
 
-      if (uniqueDishObjectIds.length === 0) {
-        return res.status(404).send({ msg: "No dishes found for this client" });
-      }
+      // if (uniqueDishObjectIds.length === 0) {
+      //   return res.status(404).send({ msg: "No dishes found for this client" });
+      // }
 
       // Step 4: Fetch dish details using the unique dish ObjectIds
       const dishes = await db
