@@ -77,23 +77,43 @@ class RestaurantController {
     clientId: string,
     name: string
   ) => {
-    const db = client.db(name); // Replace with your actual database name
+    const db = client.db(name);
+    const clientsCollection = db.collection("clients");
     const ordersCollection = db.collection<IOrder>("orders");
 
+    // Step 1: Find the client by clientId and get their order IDs
+    const clientObject = await clientsCollection.findOne({
+      _id: new ObjectId(clientId),
+    });
+
+    if (
+      !clientObject ||
+      !clientObject.orders ||
+      clientObject.orders.length === 0
+    ) {
+      return [];
+    }
+
+    // Step 2: Find the relevant orders from the orders collection
     const items = await ordersCollection
       .aggregate([
         {
-          $unwind: "$transactions",
+          $match: {
+            _id: { $in: clientObject.orders }, // Match orders based on client orders array
+          },
+        },
+        {
+          $unwind: "$transactions", // Unwind transactions to process each one separately
         },
         {
           $match: {
-            "transactions.clientId": new ObjectId(clientId),
+            "transactions.clientId": new ObjectId(clientId), // Match transactions by clientId
           },
         },
         {
           $group: {
             _id: null,
-            items: { $push: "$transactions.items" },
+            items: { $push: "$transactions.items" }, // Collect all items (comma-separated dish ObjectIds)
           },
         },
         {
@@ -105,8 +125,16 @@ class RestaurantController {
       ])
       .toArray();
 
-    console.log("🚀 ~ RestaurantController ~ items:", items);
-    return items.length > 0 ? items[0].items : [];
+    // Step 3: Process the items string to extract unique dish ObjectIds
+    const dishIds = items
+      .flatMap((dishString) => dishString.split(",")) // Split the comma-separated string
+      .map((dishId) => dishId.trim()); // Remove any extra whitespace
+
+    const uniqueDishObjectIds = Array.from(
+      new Set(dishIds.map((dishId) => new ObjectId(dishId)))
+    );
+
+    return uniqueDishObjectIds;
   };
 
   private getPastOrders = async (
@@ -115,34 +143,24 @@ class RestaurantController {
   ) => {
     try {
       const { uid } = req.cookies;
-      console.log("🚀 ~ RestaurantController ~ uid:", uid);
       const db = client.db(req.headers.name as string);
-      // const uid = "668e911939693cfcf7a730b5";
-      // const collections = await db.collections();
-      // if (collections.length <= 3)
-      //   return res.status(404).send({ msg: "no restaurant found" });
-      const itemsArray = await this.getTransactionsByClientId(
+
+      // Fetch unique dish ObjectIds for the client
+      const uniqueDishObjectIds = await this.getTransactionsByClientId(
         uid,
         req.headers.name as string
       );
-      const uniqueDishObjectIds = Array.from(new Set(itemsArray));
 
-      // Fetch and return dish details
+      if (uniqueDishObjectIds.length === 0) {
+        return res.status(404).send({ msg: "No dishes found for this client" });
+      }
+
+      // Step 4: Fetch dish details using the unique dish ObjectIds
       const dishes = await db
         .collection("dishes")
-        //@ts-ignore
         .find({ _id: { $in: uniqueDishObjectIds } })
         .toArray();
-      // const orders = await db
-      //   .collection("orders")
-      //   .aggregate([
-      //     { $match: { clientId: uid } }, // Match documents with the specified clientId
-      //     { $project: { orderDetails: 1 } }, // Only include the orderDetails field
-      //   ])
-      //   .toArray();
-      // const dishArray = orders.flatMap((order) =>
-      //   order.orderDetails.map((detail) => detail.dish)
-      // );
+
       res.json({ orders: dishes });
     } catch (err) {
       console.log(err);
@@ -573,7 +591,7 @@ class RestaurantController {
         const db = client.db(restaurant);
         const existingOrder = await db.collection<IOrder>("orders").findOne({
           _id: new ObjectId(orderID as string),
-          orderIds: {$in:[data.order.order_id]},
+          orderIds: { $in: [data.order.order_id] },
         });
 
         if (existingOrder) {
