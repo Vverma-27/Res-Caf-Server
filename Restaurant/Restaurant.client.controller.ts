@@ -132,9 +132,7 @@ class RestaurantController {
       .map((dishId) => dishId.trim()); // Remove any extra whitespace
     console.log("🚀 ~ RestaurantController ~ dishIds:", dishIds);
 
-    const uniqueDishObjectIds = Array.from(
-      new Set(dishIds.map((dishId) => new ObjectId(dishId)))
-    );
+    const uniqueDishObjectIds = Array.from(new Set(dishIds));
 
     return uniqueDishObjectIds;
   };
