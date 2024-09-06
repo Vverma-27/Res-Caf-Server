@@ -164,6 +164,7 @@ class RestaurantController {
       // Step 4: Fetch dish details using the unique dish ObjectIds
       const dishes = await db
         .collection("dishes")
+        //@ts-ignore
         .find({ _id: { $in: uniqueDishObjectIds } })
         .toArray();
 
