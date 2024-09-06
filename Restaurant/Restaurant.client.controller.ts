@@ -569,7 +569,6 @@ class RestaurantController {
       );
       if (response.object) {
         const { data, event_time } = req.body;
-        console.log("🚀 ~ RestaurantController ~ verifyPayment= ~ data:", data);
         const orderDetails = data.order.order_tags.items.split(",").map((e) => {
           const [num, dishId, numSplitters] = e.split(":");
           return {
@@ -733,6 +732,9 @@ class RestaurantController {
             { $push: { orders: new ObjectId(orderID as string) } }
           );
         }
+        console.log(
+          "🚀 ~ RestaurantController ~ verifyPayment= ~ result: finished req"
+        );
         setTimeout(async () => {
           const res = await fetch(
             `https://sandbox.cashfree.com/pg/easy-split/orders/${data.order.order_id}/split`,
