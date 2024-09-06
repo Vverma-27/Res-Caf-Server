@@ -126,9 +126,11 @@ class RestaurantController {
       .toArray();
 
     // Step 3: Process the items string to extract unique dish ObjectIds
+    console.log("🚀 ~ RestaurantController ~ items:", items);
     const dishIds = items
       .flatMap((dishString) => dishString.split(",")) // Split the comma-separated string
       .map((dishId) => dishId.trim()); // Remove any extra whitespace
+    console.log("🚀 ~ RestaurantController ~ dishIds:", dishIds);
 
     const uniqueDishObjectIds = Array.from(
       new Set(dishIds.map((dishId) => new ObjectId(dishId)))
@@ -149,6 +151,10 @@ class RestaurantController {
       const uniqueDishObjectIds = await this.getTransactionsByClientId(
         uid,
         req.headers.name as string
+      );
+      console.log(
+        "🚀 ~ RestaurantController ~ uniqueDishObjectIds:",
+        uniqueDishObjectIds
       );
 
       if (uniqueDishObjectIds.length === 0) {
