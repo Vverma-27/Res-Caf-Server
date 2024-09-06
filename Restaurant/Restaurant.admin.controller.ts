@@ -986,6 +986,17 @@ class RestaurantController {
                 "orders.status": { $eq: OrderStatus.COMPLETED },
               },
             },
+            // Group by order ID first to ensure each order amount is only counted once
+            {
+              $group: {
+                _id: "$_id",
+                clientName: { $first: "$name" },
+                clientEmail: { $first: "$email" },
+                clientNumber: { $first: "$number" },
+                totalOrderAmount: { $sum: { $toDouble: "$orders.amount" } }, // Sum once per order
+                orders: { $push: "$orders" },
+              },
+            },
             {
               $unwind: "$orders.orderDetails",
             },
@@ -1006,12 +1017,11 @@ class RestaurantController {
                   clientId: "$_id",
                   dishId: "$orders.orderDetails.dish",
                 },
-                clientName: { $first: "$name" },
-                clientEmail: { $first: "$email" },
-                clientNumber: { $first: "$number" },
+                clientName: { $first: "$clientName" },
+                clientEmail: { $first: "$clientEmail" },
+                clientNumber: { $first: "$clientNumber" },
                 dishName: { $first: "$dishDetails.name" },
                 timesOrdered: { $sum: "$orders.orderDetails.qty" },
-                orderAmounts: { $first: { $toDouble: "$orders.amount" } }, // Capture the order amount
               },
             },
             {
@@ -1020,7 +1030,7 @@ class RestaurantController {
                 clientName: { $first: "$clientName" },
                 clientEmail: { $first: "$clientEmail" },
                 clientNumber: { $first: "$clientNumber" },
-                amountSpent: { $sum: "$orderAmounts" }, // Sum the order amounts for the client
+                amountSpent: { $first: "$totalOrderAmount" }, // Use the summed order amounts
                 dishes: {
                   $push: {
                     dishName: "$dishName",
