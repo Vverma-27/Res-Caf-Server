@@ -573,7 +573,7 @@ class RestaurantController {
         const db = client.db(restaurant);
         const existingOrder = await db.collection<IOrder>("orders").findOne({
           _id: new ObjectId(orderID as string),
-          orderIds: data.order.order_id,
+          orderIds: {$in:[data.order.order_id]},
         });
 
         if (existingOrder) {
