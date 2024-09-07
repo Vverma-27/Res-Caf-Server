@@ -504,16 +504,16 @@ class RestaurantController {
         }
 
         // Set the cookie if it wasn't already set
-        if (!uid) {
-          console.log("setting uid in cookie");
-          res.cookie("uid", user._id.toString(), {
-            expires: new Date(Date.now() + 31536000000),
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
-            // sameSite: "strict",
-          });
-        }
+        // if (!uid) {
+        console.log("setting uid in cookie");
+        res.cookie("uid", user._id.toString(), {
+          expires: new Date(Date.now() + 31536000000),
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "strict",
+          // sameSite: "strict",
+        });
+        // }
 
         return res.json({ id: user._id });
       }
